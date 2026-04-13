@@ -17,7 +17,7 @@ const camera = new THREE.PerspectiveCamera(
     100
 );
 
-const gridSize = 10;
+const gridSize = 9;
 const tileWidth = 1;
 const tileDepth = 1;
 const tileHeight = 0.1;
@@ -27,7 +27,12 @@ const tileGeometry = new THREE.BoxGeometry(tileWidth, tileHeight, tileDepth);
 
 for (let x = 0; x < gridSize; x += 1) {
     for (let z = 0; z < gridSize; z += 1) {
-        const color = new THREE.Color(Math.random(), Math.random(), Math.random());
+        var color = new THREE.Color(Math.random(), Math.random(), Math.random());
+        if ((x + z) % 2 === 0) {
+            color = new THREE.Color(0.9, 0.9, 0.9);
+        } else {
+            color = new THREE.Color(0.5, 0.5, 0.5);
+        }
         const tileMaterial = new THREE.MeshBasicMaterial({color});
         const tile = new THREE.Mesh(tileGeometry, tileMaterial);
         tile.position.set(x - center, 0, z - center);
@@ -35,7 +40,7 @@ for (let x = 0; x < gridSize; x += 1) {
     }
 }
 
-camera.position.set(0, 10, 0);
+camera.position.set(0, 13, 0);
 camera.lookAt(0, 0, 0);
 
 window.addEventListener('resize', () => {
