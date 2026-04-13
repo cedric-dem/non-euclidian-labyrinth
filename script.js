@@ -29,6 +29,9 @@ import {
     colorDirectionMarker,
     colorPreviousMarker,
     colorCenterMarker,
+    colorWall,
+    wallCubeSize,
+    wallHeight
 } from './config.js';
 
 // ---- define const --------------------------------------------------------
@@ -70,6 +73,13 @@ const tileByGridPosition = new Map();
 const characterGridPosition = {x: center, z: gridSize - 1};
 
 // ---- Core geometries/materials -------------------------------------------
+
+const wallCubeY = tileHeight / 2 + wallHeight / 2;
+const wallCubeGeometry = new THREE.BoxGeometry(wallCubeSize, wallHeight, wallCubeSize);
+const wallCubeMaterial = new THREE.MeshBasicMaterial({color: colorWall});
+const wallPositionOffset = (tileWidth - wallCubeSize) / 2;
+const wallOffsets = [-wallPositionOffset, 0, wallPositionOffset];
+
 const tileGeometry = new THREE.BoxGeometry(tileWidth, tileHeight, tileDepth);
 const tileLabyrinthPartMaterial = new THREE.MeshBasicMaterial({color: colorTileInPath});
 
@@ -265,7 +275,7 @@ function animate() {
     requestAnimationFrame(animate);
 }
 
-function getRepresentation(nextTiles) {
+function getRepresentation() {
     const tileGroup = new THREE.Group();
 
     // Tile itself
@@ -273,43 +283,83 @@ function getRepresentation(nextTiles) {
     tile.position.set(0, 0, 0);
     tileGroup.add(tile);
 
-    // Center marker for each labyrinth tile
-    const centerMarker = new THREE.Mesh(centerMarkerGeometry, centerMarkerMaterial);
-    centerMarker.position.set(0, centerMarkerY, 0);
-    tileGroup.add(centerMarker);
-
-    // Direction markers (small green cubes that stay within tile bounds)
-
-    const addDirectionMarker = (xOffset, zOffset) => {
-        const marker = new THREE.Mesh(directionMarkerGeometry, directionMarkerMaterial);
-        marker.position.set(xOffset, directionMarkerY, zOffset);
-        tileGroup.add(marker);
-    };
-
-    //  walls
-    if (nextTiles[0]) { // path to top
-        addDirectionMarker(0, -directionMarkerOffsetZ);
-    }
-    if (nextTiles[1]) { // path to right
-        addDirectionMarker(directionMarkerOffsetX, 0);
-    }
-    if (nextTiles[2]) { // path to bottom
-        addDirectionMarker(0, directionMarkerOffsetZ);
-    }
-    if (nextTiles[3]) { // path to left
-        addDirectionMarker(-directionMarkerOffsetX, 0);
-    }
-
     scene.add(tileGroup);
     return tileGroup;
 }
 
-function setPreviousTiles(currentTile, visitedTiles = new Set()) {
-    if (visitedTiles.has(currentTile)) {
+function setTilesVisuals(currentTile, visitedTiles = new Set()) {
+    if (currentTile === null || visitedTiles.has(currentTile)) {
         return;
     }
     visitedTiles.add(currentTile);
 
+    setTilesMarkers(currentTile)
+    setTilesWalls(currentTile)
+
+    currentTile.nextTiles.forEach((nextTile) => {
+        setTilesVisuals(nextTile, visitedTiles);
+    });
+}
+
+
+function setTilesWalls(currentTile) {
+    const openCells = new Set();
+    openCells.add('1,1'); // center marker is always present
+
+    if (currentTile.nextTiles[0] || currentTile.previousTile[0]) {
+        openCells.add('1,0');
+    }
+    if (currentTile.nextTiles[1] || currentTile.previousTile[1]) {
+        openCells.add('2,1');
+    }
+    if (currentTile.nextTiles[2] || currentTile.previousTile[2]) {
+        openCells.add('1,2');
+    }
+    if (currentTile.nextTiles[3] || currentTile.previousTile[3]) {
+        openCells.add('0,1');
+    }
+
+    for (let row = 0; row < wallOffsets.length; row += 1) {
+        for (let col = 0; col < wallOffsets.length; col += 1) {
+            if (openCells.has(`${col},${row}`)) {
+                continue;
+            }
+
+            const wallCube = new THREE.Mesh(wallCubeGeometry, wallCubeMaterial);
+            wallCube.position.set(wallOffsets[col], wallCubeY, wallOffsets[row]);
+            currentTile.representation.add(wallCube);
+        }
+    }
+}
+
+function setTilesMarkers(currentTile) {
+
+    // Center marker for each labyrinth tile
+    const centerMarker = new THREE.Mesh(centerMarkerGeometry, centerMarkerMaterial);
+    centerMarker.position.set(0, centerMarkerY, 0);
+    currentTile.representation.add(centerMarker);
+
+    // Next-direction markers
+    const addNextMarker = (xOffset, zOffset) => {
+        const marker = new THREE.Mesh(directionMarkerGeometry, directionMarkerMaterial);
+        marker.position.set(xOffset, directionMarkerY, zOffset);
+        currentTile.representation.add(marker);
+    };
+
+    if (currentTile.nextTiles[0]) { // path to top
+        addNextMarker(0, -directionMarkerOffsetZ);
+    }
+    if (currentTile.nextTiles[1]) { // path to right
+        addNextMarker(directionMarkerOffsetX, 0);
+    }
+    if (currentTile.nextTiles[2]) { // path to bottom
+        addNextMarker(0, directionMarkerOffsetZ);
+    }
+    if (currentTile.nextTiles[3]) { // path to left
+        addNextMarker(-directionMarkerOffsetX, 0);
+    }
+
+    // Previous-direction markers
     const addPreviousMarker = (xOffset, zOffset) => {
         const marker = new THREE.Mesh(directionMarkerGeometry, previousMarkerMaterial);
         marker.position.set(xOffset, directionMarkerY, zOffset);
@@ -328,12 +378,6 @@ function setPreviousTiles(currentTile, visitedTiles = new Set()) {
     if (currentTile.previousTile[3]) { // path to left
         addPreviousMarker(-directionMarkerOffsetX, 0);
     }
-
-    currentTile.nextTiles.forEach((nextTile) => {
-        if (nextTile !== null) {
-            setPreviousTiles(nextTile, visitedTiles);
-        }
-    });
 }
 
 function setTilesPositions(currentLocation, currentTile) {
@@ -400,7 +444,7 @@ function setSubtreeVisibility(rootTile) {
 function initializeLabyrinthState() {
     setTilesRepresentation();
     setTilesPositions([center, gridSize - 1], entryPoint);
-    setPreviousTiles(entryPoint);
+    setTilesVisuals(entryPoint);
     tileHistory.push({
         tile: entryPoint,
         previousDirectionIndex: null,

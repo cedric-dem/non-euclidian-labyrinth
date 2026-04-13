@@ -5,6 +5,9 @@ export const tileHeight = 0.1;
 export const markerHeight = 0.5;
 export const markerThickness = 0.2;
 
+export const wallCubeSize = 0.33;
+export const wallHeight = 1
+
 export const cameraHeight = 13;
 
 export const characterHeadRadius = 0.11;
@@ -30,8 +33,9 @@ export const colorRightMarker = 0x660066;
 export const colorCharacterBody = 0x006666;
 export const colorCharacterHead = 0x660000;
 
-
 export const colorTileInPath = 0x222222;
-export const colorDirectionMarker = 0x00ff00;
-export const colorPreviousMarker = 0xff0000;
-export const colorCenterMarker = 0x0000ff;
+
+export const colorDirectionMarker = 0x336633;
+export const colorPreviousMarker = 0x663333;
+export const colorCenterMarker = 0x333366;
+export const colorWall = 0x333333;
