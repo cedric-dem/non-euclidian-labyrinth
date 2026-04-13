@@ -83,7 +83,6 @@ for (const markerDefinition of markerDefinitions) {
     marker.position.set(...markerDefinition.position);
     scene.add(marker);
 }
-
 const characterHeight = 0.8;
 const characterRadius = 0.3;
 const characterGeometry = new THREE.CylinderGeometry(characterRadius, characterRadius, characterHeight, 24);
@@ -106,6 +105,12 @@ const characterGridPosition = {
     x: center,
     z: gridSize - 1,
 };
+const tileByGridPosition = new Map();
+const labyrinthTiles = [];
+let currentTile = null;
+const tileHistory = [];
+
+const getTileMapKey = (x, z) => `${x},${z}`;
 
 const updateCharacterWorldPosition = () => {
     character.position.set(
@@ -151,6 +156,7 @@ window.addEventListener('keydown', (event) => {
     const key = event.key.toLowerCase();
     let moveX = 0;
     let moveZ = 0;
+    let directionIndex = -1;
 
     if (key === 'a' && !event.repeat) {
         isFollowCameraActive = !isFollowCameraActive;
@@ -159,12 +165,37 @@ window.addEventListener('keydown', (event) => {
 
     if (key === 'z') {
         moveZ = -1;
+        directionIndex = 0;
     } else if (key === 's') {
         moveZ = 1;
+        directionIndex = 2;
     } else if (key === 'q') {
         moveX = -1;
+        directionIndex = 3;
     } else if (key === 'd') {
         moveX = 1;
+        directionIndex = 1;
+    } else {
+        return;
+    }
+
+    const historyEntry = tileHistory[tileHistory.length - 1] ?? null;
+    const forwardTile = currentTile?.nextTiles[directionIndex] ?? null;
+    const canMoveBackward = (
+        historyEntry !== null
+        && historyEntry.previousDirectionIndex === directionIndex
+        && tileHistory.length > 1
+    );
+
+    if (forwardTile !== null) {
+        tileHistory.push({
+            tile: forwardTile,
+            previousDirectionIndex: (directionIndex + 2) % 4,
+        });
+        currentTile = forwardTile;
+    } else if (canMoveBackward) {
+        tileHistory.pop();
+        currentTile = tileHistory[tileHistory.length - 1]?.tile ?? null;
     } else {
         return;
     }
@@ -183,6 +214,8 @@ window.addEventListener('keydown', (event) => {
 
     characterGridPosition.x = nextX;
     characterGridPosition.z = nextZ;
+
+    setSubtreeVisibility(currentTile);
     updateCharacterWorldPosition();
     updateCharacterFacingDirection();
 });
@@ -308,6 +341,10 @@ const positionOffsets = [
 
 function setTilesPositions(currentLocation, currentTile) {
     //currentLocation : [x , z]
+    tileByGridPosition.set(
+        getTileMapKey(currentLocation[0], currentLocation[1]),
+        currentTile
+    );
     currentTile.representation.position.set(
         currentLocation[0] - center,
         0,
@@ -335,7 +372,34 @@ class labyrinthTile {
         this.nextTiles = nextTiles;
         this.representation = getRepresentation(nextTiles);
         this.previousTile = [false, false, false, false];
+        labyrinthTiles.push(this);
     }
+}
+
+function setSubtreeVisibility(rootTile) {
+    labyrinthTiles.forEach((tile) => {
+        tile.representation.visible = false;
+    });
+
+    if (rootTile === null) {
+        return;
+    }
+
+    const visitedTiles = new Set();
+    const showTileAndChildren = (tile) => {
+        if (tile === null || visitedTiles.has(tile)) {
+            return;
+        }
+
+        visitedTiles.add(tile);
+        tile.representation.visible = true;
+
+        tile.nextTiles.forEach((nextTile) => {
+            showTileAndChildren(nextTile);
+        });
+    };
+
+    showTileAndChildren(rootTile);
 }
 
 // convention : [up, right, down, left]
@@ -478,9 +542,15 @@ const entryPoint = new labyrinthTile([
             null,
             null
     ]);
-*/
+    */
 
 setTilesPositions([center, gridSize - 1], entryPoint);
 setPreviousTiles(entryPoint);
+tileHistory.push({
+    tile: entryPoint,
+    previousDirectionIndex: null,
+});
+currentTile = entryPoint;
+setSubtreeVisibility(currentTile);
 
 animate();
