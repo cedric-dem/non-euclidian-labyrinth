@@ -22,6 +22,8 @@ const tileWidth = 1;
 const tileDepth = 1;
 const tileHeight = 0.1;
 const center = (gridSize - 1) / 2;
+const minGridIndex = 0;
+const maxGridIndex = gridSize - 1;
 
 const tileGeometry = new THREE.BoxGeometry(tileWidth, tileHeight, tileDepth);
 
@@ -39,6 +41,53 @@ for (let x = 0; x < gridSize; x += 1) {
         scene.add(tile);
     }
 }
+
+const characterHeight = 0.8;
+const characterRadius = 0.3;
+const characterGeometry = new THREE.CylinderGeometry(characterRadius, characterRadius, characterHeight, 24);
+const characterMaterial = new THREE.MeshBasicMaterial({color: 0xff0000});
+const character = new THREE.Mesh(characterGeometry, characterMaterial);
+
+const characterGridPosition = {
+    x: center,
+    z: gridSize - 1,
+};
+
+const updateCharacterWorldPosition = () => {
+    character.position.set(
+        characterGridPosition.x - center,
+        tileHeight / 2 + characterHeight / 2,
+        characterGridPosition.z - center
+    );
+};
+
+updateCharacterWorldPosition();
+scene.add(character);
+
+window.addEventListener('keydown', (event) => {
+    const key = event.key.toLowerCase();
+    let moveX = 0;
+    let moveZ = 0;
+
+    if (key === 'z') {
+        moveZ = -1;
+    } else if (key === 's') {
+        moveZ = 1;
+    } else if (key === 'q') {
+        moveX = -1;
+    } else if (key === 'd') {
+        moveX = 1;
+    } else {
+        return;
+    }
+
+    const nextX = THREE.MathUtils.clamp(characterGridPosition.x + moveX, minGridIndex, maxGridIndex);
+    const nextZ = THREE.MathUtils.clamp(characterGridPosition.z + moveZ, minGridIndex, maxGridIndex);
+
+    characterGridPosition.x = nextX;
+    characterGridPosition.z = nextZ;
+    updateCharacterWorldPosition();
+});
 
 camera.position.set(0, 13, 0);
 camera.lookAt(0, 0, 0);
