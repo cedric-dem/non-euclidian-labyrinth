@@ -1,139 +1,172 @@
 import * as THREE from 'https://unpkg.com/three@0.164.1/build/three.module.js';
+import {entryPoint} from './labyrinth.js';
+import {labyrinthTiles} from './labyrinthTile.js';
+import {
+    gridSize,
+    tileWidth,
+    tileDepth,
+    tileHeight,
+    markerHeight,
+    markerThickness,
+    characterHeadRadius,
+    followCameraHeight,
+    followCameraDistance,
+    directionMarkerSize,
+    centerMarkerSize,
+    colorSceneBackground,
+    colorLightTile,
+    colorDarkTile,
+    colorTopMarker,
+    colorBottomMarker,
+    colorLeftMarker,
+    colorRightMarker,
+    colorCharacterBody,
+    colorCharacterHead,
+    characterHeight,
+    characterRadius,
+    cameraHeight,
+    colorTileInPath,
+    colorDirectionMarker,
+    colorPreviousMarker,
+    colorCenterMarker,
+} from './config.js';
 
-const app = document.getElementById('app');
+// ---- define const --------------------------------------------------------
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0000ff);
-
-const renderer = new THREE.WebGLRenderer({antialias: true});
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(window.devicePixelRatio);
-app.appendChild(renderer.domElement);
-
-const topCamera = new THREE.PerspectiveCamera(
-    50,
-    window.innerWidth / window.innerHeight,
-    0.1,
-    100
-);
-
-const followCamera = new THREE.PerspectiveCamera(
-    50,
-    window.innerWidth / window.innerHeight,
-    0.1,
-    100
-);
-
-let isFollowCameraActive = false;
-
-const gridSize = 9;
-const tileWidth = 1;
-const tileDepth = 1;
-const tileHeight = 0.1;
-const markerHeight = 0.5;
-const markerThickness = 0.2;
 const center = (gridSize - 1) / 2;
+
+const directionMarkerOffsetX = tileWidth / 2 - directionMarkerSize / 2 - 0.03;
+const directionMarkerOffsetZ = tileDepth / 2 - directionMarkerSize / 2 - 0.03;
+const directionMarkerY = tileHeight / 2;
+
+const centerMarkerY = tileHeight / 2;
+
 const minGridIndex = 0;
 const maxGridIndex = gridSize - 1;
 const gridWorldWidth = gridSize * tileWidth;
 const gridWorldDepth = gridSize * tileDepth;
 
-const tileGeometry = new THREE.BoxGeometry(tileWidth, tileHeight, tileDepth);
+// ---- App bootstrap --------------------------------------------------------
+const app = document.getElementById('app');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(colorSceneBackground);
+const renderer = new THREE.WebGLRenderer({antialias: true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+app.appendChild(renderer.domElement);
 
-for (let x = 0; x < gridSize; x += 1) {
-    for (let z = 0; z < gridSize; z += 1) {
-        var color = new THREE.Color(Math.random(), Math.random(), Math.random());
-        if ((x + z) % 2 === 0) {
-            color = new THREE.Color(0.9, 0.9, 0.9);
-        } else {
-            color = new THREE.Color(0.5, 0.5, 0.5);
+const topCamera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+const followCamera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+topCamera.position.set(0, cameraHeight, 0);
+topCamera.lookAt(0, 0, 0);
+
+// ---- Shared state ---------------------------------------------------------
+let isFollowCameraActive = false;
+let currentTile = null;
+let lastMovementDirection = {x: 0, z: -1};
+
+const tileHistory = [];
+const tileByGridPosition = new Map();
+const characterGridPosition = {x: center, z: gridSize - 1};
+
+// ---- Core geometries/materials -------------------------------------------
+const tileGeometry = new THREE.BoxGeometry(tileWidth, tileHeight, tileDepth);
+const tileLabyrinthPartMaterial = new THREE.MeshBasicMaterial({color: colorTileInPath});
+
+
+const directionMarkerGeometry = new THREE.BoxGeometry(directionMarkerSize, tileHeight, directionMarkerSize);
+const directionMarkerMaterial = new THREE.MeshBasicMaterial({color: colorDirectionMarker});
+const previousMarkerMaterial = new THREE.MeshBasicMaterial({color: colorPreviousMarker});
+
+const centerMarkerGeometry = new THREE.BoxGeometry(centerMarkerSize, tileHeight, centerMarkerSize);
+const centerMarkerMaterial = new THREE.MeshBasicMaterial({color: colorCenterMarker});
+
+const positionOffsets = [
+    [0, -1], // up
+    [1, 0], // right
+    [0, 1], // down
+    [-1, 0], // left
+];
+
+const getTileMapKey = (x, z) => `${x},${z}`;
+
+// ---- Scene setup ----------------------------------------------------------
+function createCheckerboardTiles() {
+    for (let x = 0; x < gridSize; x += 1) {
+        for (let z = 0; z < gridSize; z += 1) {
+            const color = (x + z) % 2 === 0 ? new THREE.Color(colorLightTile) : new THREE.Color(colorDarkTile);
+            const tileMaterial = new THREE.MeshBasicMaterial({color});
+            const tile = new THREE.Mesh(tileGeometry, tileMaterial);
+            tile.position.set(x - center, -0.01, z - center);
+            scene.add(tile);
         }
-        const tileMaterial = new THREE.MeshBasicMaterial({color});
-        const tile = new THREE.Mesh(tileGeometry, tileMaterial);
-        tile.position.set(x - center, 0, z - center);
-        scene.add(tile);
     }
 }
 
-const markerDefinitions = [
-    {
-        geometry: new THREE.BoxGeometry(gridWorldWidth + 0.4, markerHeight, markerThickness),
-        position: [0, tileHeight / 2 + markerHeight / 2, -(center + tileDepth / 2 + markerThickness / 2)],
-        color: 0xff0000,
-    },
-    {
-        geometry: new THREE.BoxGeometry(gridWorldWidth + 0.4, markerHeight, markerThickness),
-        position: [0, tileHeight / 2 + markerHeight / 2, center + tileDepth / 2 + markerThickness / 2],
-        color: 0x00ff00,
-    },
-    {
-        geometry: new THREE.BoxGeometry(markerThickness, markerHeight, gridWorldDepth + 0.4),
-        position: [-(center + tileWidth / 2 + markerThickness / 2), -0.01 + tileHeight / 2 + markerHeight / 2, 0],
-        color: 0x000000,
-    },
-    {
-        geometry: new THREE.BoxGeometry(markerThickness, markerHeight, gridWorldDepth + 0.4),
-        position: [center + tileWidth / 2 + markerThickness / 2, -0.01 + tileHeight / 2 + markerHeight / 2, 0],
-        color: 0xffff00,
-    },
-];
-for (const markerDefinition of markerDefinitions) {
-    const markerMaterial = new THREE.MeshBasicMaterial({color: markerDefinition.color});
-    const marker = new THREE.Mesh(markerDefinition.geometry, markerMaterial);
-    marker.position.set(...markerDefinition.position);
-    scene.add(marker);
+function createBoundaryMarkers() {
+    const markerDefinitions = [
+        {
+            geometry: new THREE.BoxGeometry(gridWorldWidth + 0.4, markerHeight, markerThickness),
+            position: [0, tileHeight / 2 + markerHeight / 2, -(center + tileDepth / 2 + markerThickness / 2)],
+            color: colorTopMarker,
+        },
+        {
+            geometry: new THREE.BoxGeometry(gridWorldWidth + 0.4, markerHeight, markerThickness),
+            position: [0, tileHeight / 2 + markerHeight / 2, center + tileDepth / 2 + markerThickness / 2],
+            color: colorBottomMarker,
+        },
+        {
+            geometry: new THREE.BoxGeometry(markerThickness, markerHeight, gridWorldDepth + 0.4),
+            position: [-(center + tileWidth / 2 + markerThickness / 2), -0.01 + tileHeight / 2 + markerHeight / 2, 0],
+            color: colorLeftMarker,
+        },
+        {
+            geometry: new THREE.BoxGeometry(markerThickness, markerHeight, gridWorldDepth + 0.4),
+            position: [center + tileWidth / 2 + markerThickness / 2, -0.01 + tileHeight / 2 + markerHeight / 2, 0],
+            color: colorRightMarker,
+        },
+    ];
+
+    for (const markerDefinition of markerDefinitions) {
+        const markerMaterial = new THREE.MeshBasicMaterial({color: markerDefinition.color});
+        const marker = new THREE.Mesh(markerDefinition.geometry, markerMaterial);
+        marker.position.set(...markerDefinition.position);
+        scene.add(marker);
+    }
 }
-const characterHeight = 0.8;
-const characterRadius = 0.3;
+
+// ---- Character setup ------------------------------------------------------
+
 const characterGeometry = new THREE.CylinderGeometry(characterRadius, characterRadius, characterHeight, 24);
-const characterMaterial = new THREE.MeshBasicMaterial({color: 0xff0000});
-
+const characterMaterial = new THREE.MeshBasicMaterial({color: colorCharacterBody});
 const character = new THREE.Group();
-
 const characterBody = new THREE.Mesh(characterGeometry, characterMaterial);
 characterBody.position.y = 0;
 character.add(characterBody);
 
-const characterHeadRadius = 0.11;
 const characterHeadGeometry = new THREE.SphereGeometry(characterHeadRadius, 20, 20);
-const characterHeadMaterial = new THREE.MeshBasicMaterial({color: 0x000000});
+const characterHeadMaterial = new THREE.MeshBasicMaterial({color: colorCharacterHead});
 const characterHead = new THREE.Mesh(characterHeadGeometry, characterHeadMaterial);
 characterHead.position.set(0, characterHeight / 2 - characterHeadRadius * 0.1, characterRadius + characterHeadRadius * 0.9);
 character.add(characterHead);
 
-const characterGridPosition = {
-    x: center,
-    z: gridSize - 1,
-};
-const tileByGridPosition = new Map();
-const labyrinthTiles = [];
-let currentTile = null;
-const tileHistory = [];
-
-const getTileMapKey = (x, z) => `${x},${z}`;
-
-const updateCharacterWorldPosition = () => {
+function updateCharacterWorldPosition() {
     character.position.set(
         characterGridPosition.x - center,
         tileHeight / 2 + characterHeight / 2,
         characterGridPosition.z - center
     );
-};
+}
 
-const updateCharacterFacingDirection = () => {
+function updateCharacterFacingDirection() {
     if (lastMovementDirection === null) {
         return;
     }
 
-    const facingAngle = Math.atan2(lastMovementDirection.x, lastMovementDirection.z);
-    character.rotation.y = facingAngle;
-};
+    character.rotation.y = Math.atan2(lastMovementDirection.x, lastMovementDirection.z);
+}
 
-const followCameraHeight = 2.8;
-const followCameraDistance = 3.2;
-let lastMovementDirection = {x: 0, z: -1};
-
-const updateFollowCamera = () => {
+function updateFollowCamera() {
     const followOffset = new THREE.Vector3(0, followCameraHeight, followCameraDistance);
 
     if (lastMovementDirection !== null) {
@@ -146,13 +179,9 @@ const updateFollowCamera = () => {
 
     followCamera.position.copy(character.position).add(followOffset);
     followCamera.lookAt(character.position);
-};
+}
 
-updateCharacterWorldPosition();
-updateCharacterFacingDirection();
-scene.add(character);
-
-window.addEventListener('keydown', (event) => {
+function handleKeyDown(event) {
     const key = event.key.toLowerCase();
     let moveX = 0;
     let moveZ = 0;
@@ -218,48 +247,23 @@ window.addEventListener('keydown', (event) => {
     setSubtreeVisibility(currentTile);
     updateCharacterWorldPosition();
     updateCharacterFacingDirection();
-});
+}
 
-topCamera.position.set(0, 13, 0);
-topCamera.lookAt(0, 0, 0);
-
-window.addEventListener('resize', () => {
+function handleResize() {
     const aspect = window.innerWidth / window.innerHeight;
     topCamera.aspect = aspect;
     topCamera.updateProjectionMatrix();
     followCamera.aspect = aspect;
     followCamera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-});
+}
 
-const animate = () => {
+function animate() {
     updateFollowCamera();
     const activeCamera = isFollowCameraActive ? followCamera : topCamera;
     renderer.render(scene, activeCamera);
     requestAnimationFrame(animate);
-};
-
-const tileLabyrinthPartMaterial = new THREE.MeshBasicMaterial({color: 0x444444});
-
-const directionMarkerSize = 0.333;
-const directionMarkerOffsetX = tileWidth / 2 - directionMarkerSize / 2 - 0.03;
-const directionMarkerOffsetZ = tileDepth / 2 - directionMarkerSize / 2 - 0.03;
-const directionMarkerY = tileHeight / 2;
-const directionMarkerGeometry = new THREE.BoxGeometry(
-    directionMarkerSize,
-    tileHeight,
-    directionMarkerSize
-);
-const directionMarkerMaterial = new THREE.MeshBasicMaterial({color: 0x00ff00});
-const previousMarkerMaterial = new THREE.MeshBasicMaterial({color: 0xff0000});
-const centerMarkerSize = 0.33;
-const centerMarkerY = tileHeight / 2;
-const centerMarkerGeometry = new THREE.BoxGeometry(
-    centerMarkerSize,
-    tileHeight,
-    centerMarkerSize
-);
-const centerMarkerMaterial = new THREE.MeshBasicMaterial({color: 0x0000ff});
+}
 
 function getRepresentation(nextTiles) {
     const tileGroup = new THREE.Group();
@@ -332,13 +336,6 @@ function setPreviousTiles(currentTile, visitedTiles = new Set()) {
     });
 }
 
-const positionOffsets = [
-    [0, -1], // up
-    [1, 0],  // right
-    [0, 1],  // down
-    [-1, 0], // left
-];
-
 function setTilesPositions(currentLocation, currentTile) {
     //currentLocation : [x , z]
     tileByGridPosition.set(
@@ -367,13 +364,11 @@ function setTilesPositions(currentLocation, currentTile) {
     });
 }
 
-class labyrinthTile {
-    constructor(nextTiles) {
-        this.nextTiles = nextTiles;
-        this.representation = getRepresentation(nextTiles);
-        this.previousTile = [false, false, false, false];
-        labyrinthTiles.push(this);
-    }
+function setTilesRepresentation() {
+    labyrinthTiles.forEach((tile) => {
+        tile.representation = getRepresentation(tile.nextTiles);
+    });
+
 }
 
 function setSubtreeVisibility(rootTile) {
@@ -402,155 +397,31 @@ function setSubtreeVisibility(rootTile) {
     showTileAndChildren(rootTile);
 }
 
-// convention : [up, right, down, left]
+function initializeLabyrinthState() {
+    setTilesRepresentation();
+    setTilesPositions([center, gridSize - 1], entryPoint);
+    setPreviousTiles(entryPoint);
+    tileHistory.push({
+        tile: entryPoint,
+        previousDirectionIndex: null,
+    });
+    currentTile = entryPoint;
+    setSubtreeVisibility(currentTile);
+}
 
-const entryPoint = new labyrinthTile([
-    new labyrinthTile([
-        new labyrinthTile([
-            null,
-            new labyrinthTile([
-                null,
-                new labyrinthTile([
-                    new labyrinthTile([
-                        new labyrinthTile([
-                            new labyrinthTile([
-                                new labyrinthTile([null, null, null, null]),
-                                null,
-                                null,
-                                null
-                            ]),
-                            null,
-                            null,
-                            null
-                        ]),
-                        null,
-                        null,
-                        null
-                    ]),
-                    null,
-                    null,
-                    null
-                ]),
-                null,
-                null
-            ]),
-            null,
-            new labyrinthTile([
-                null,
-                null,
-                null,
-                new labyrinthTile([
-                    new labyrinthTile([
-                        new labyrinthTile([
-                            null,
-                            new labyrinthTile([
-                                null,
-                                new labyrinthTile([
-                                    null,
-                                    new labyrinthTile([
-                                        null,
-                                        new labyrinthTile([
-                                            null,
-                                            new labyrinthTile([
-                                                null,
-                                                new labyrinthTile([null, null, null, null]),
-                                                null,
-                                                null
-                                            ]),
-                                            null,
-                                            null
-                                        ]),
-                                        null,
-                                        null
-                                    ]),
-                                    null,
-                                    null
-                                ]),
-                                null,
-                                null
-                            ]),
-                            null,
-                            null
-                        ]),
-                        null,
-                        null,
-                        null
-                    ]),
-                    null,
-                    null,
-                    null
-                ])
-            ])
-        ]),
-        null,
-        null,
-        null
-    ]),
-    null,
-    null,
-    null
-])
+function initialize() {
+    createCheckerboardTiles();
+    createBoundaryMarkers();
 
-/*
-const entryPoint = new labyrinthTile([
-    new labyrinthTile([
-        null,
-        new labyrinthTile([
-            new labyrinthTile([
-                null,
-                null,
-                null,
-                new labyrinthTile([
-                    null,
-                    null,
-                    new labyrinthTile([null, null, null, null]),
-                    null
-                ])
-            ]),
-            null,
-            null,
-            null
-        ]),
-        null,
-        new labyrinthTile([
-            new labyrinthTile([
-                null,
-                new labyrinthTile([
-                    new labyrinthTile([
-                        new labyrinthTile([
-                            null,
-                            new labyrinthTile([null, null, null, null]),
-                            null,
-                            null
-                        ]),
-                        null,
-                        null,
-                        null
-                    ]),
-                    null,
-                    null,
-                    null]),
-                null,
-                null
-            ]),
-            null,
-            null,
-            null
-    ]),
-    ]),
-        null,
-            null,
-            null
-    ]);
-    */
+    updateCharacterWorldPosition();
+    updateCharacterFacingDirection();
+    scene.add(character);
 
-setTilesPositions([center, gridSize - 1], entryPoint);
-setPreviousTiles(entryPoint);
-tileHistory.push({
-    tile: entryPoint,
-    previousDirectionIndex: null,
-});
-currentTile = entryPoint;
-setSubtreeVisibility(currentTile);
+    initializeLabyrinthState();
 
-animate();
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('resize', handleResize);
+    animate();
+}
+
+initialize();
