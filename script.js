@@ -77,7 +77,6 @@ const markerDefinitions = [
         color: 0xffff00,
     },
 ];
-
 for (const markerDefinition of markerDefinitions) {
     const markerMaterial = new THREE.MeshBasicMaterial({color: markerDefinition.color});
     const marker = new THREE.Mesh(markerDefinition.geometry, markerMaterial);
@@ -89,7 +88,19 @@ const characterHeight = 0.8;
 const characterRadius = 0.3;
 const characterGeometry = new THREE.CylinderGeometry(characterRadius, characterRadius, characterHeight, 24);
 const characterMaterial = new THREE.MeshBasicMaterial({color: 0xff0000});
-const character = new THREE.Mesh(characterGeometry, characterMaterial);
+
+const character = new THREE.Group();
+
+const characterBody = new THREE.Mesh(characterGeometry, characterMaterial);
+characterBody.position.y = 0;
+character.add(characterBody);
+
+const characterHeadRadius = 0.11;
+const characterHeadGeometry = new THREE.SphereGeometry(characterHeadRadius, 20, 20);
+const characterHeadMaterial = new THREE.MeshBasicMaterial({color: 0x000000});
+const characterHead = new THREE.Mesh(characterHeadGeometry, characterHeadMaterial);
+characterHead.position.set(0, characterHeight / 2 - characterHeadRadius * 0.1, characterRadius + characterHeadRadius * 0.9);
+character.add(characterHead);
 
 const characterGridPosition = {
     x: center,
@@ -104,9 +115,18 @@ const updateCharacterWorldPosition = () => {
     );
 };
 
+const updateCharacterFacingDirection = () => {
+    if (lastMovementDirection === null) {
+        return;
+    }
+
+    const facingAngle = Math.atan2(lastMovementDirection.x, lastMovementDirection.z);
+    character.rotation.y = facingAngle;
+};
+
 const followCameraHeight = 2.8;
 const followCameraDistance = 3.2;
-let lastMovementDirection = null;
+let lastMovementDirection = {x: 0, z: -1};
 
 const updateFollowCamera = () => {
     const followOffset = new THREE.Vector3(0, followCameraHeight, followCameraDistance);
@@ -124,6 +144,7 @@ const updateFollowCamera = () => {
 };
 
 updateCharacterWorldPosition();
+updateCharacterFacingDirection();
 scene.add(character);
 
 window.addEventListener('keydown', (event) => {
@@ -163,6 +184,7 @@ window.addEventListener('keydown', (event) => {
     characterGridPosition.x = nextX;
     characterGridPosition.z = nextZ;
     updateCharacterWorldPosition();
+    updateCharacterFacingDirection();
 });
 
 topCamera.position.set(0, 13, 0);
