@@ -30,9 +30,13 @@ const gridSize = 9;
 const tileWidth = 1;
 const tileDepth = 1;
 const tileHeight = 0.1;
+const markerHeight = 0.5;
+const markerThickness = 0.2;
 const center = (gridSize - 1) / 2;
 const minGridIndex = 0;
 const maxGridIndex = gridSize - 1;
+const gridWorldWidth = gridSize * tileWidth;
+const gridWorldDepth = gridSize * tileDepth;
 
 const tileGeometry = new THREE.BoxGeometry(tileWidth, tileHeight, tileDepth);
 
@@ -49,6 +53,36 @@ for (let x = 0; x < gridSize; x += 1) {
         tile.position.set(x - center, 0, z - center);
         scene.add(tile);
     }
+}
+
+const markerDefinitions = [
+    {
+        geometry: new THREE.BoxGeometry(gridWorldWidth + 0.4, markerHeight, markerThickness),
+        position: [0, tileHeight / 2 + markerHeight / 2, -(center + tileDepth / 2 + markerThickness / 2)],
+        color: 0xff0000,
+    },
+    {
+        geometry: new THREE.BoxGeometry(gridWorldWidth + 0.4, markerHeight, markerThickness),
+        position: [0, tileHeight / 2 + markerHeight / 2, center + tileDepth / 2 + markerThickness / 2],
+        color: 0x00ff00,
+    },
+    {
+        geometry: new THREE.BoxGeometry(markerThickness, markerHeight, gridWorldDepth + 0.4),
+        position: [-(center + tileWidth / 2 + markerThickness / 2), -0.01 + tileHeight / 2 + markerHeight / 2, 0],
+        color: 0x000000,
+    },
+    {
+        geometry: new THREE.BoxGeometry(markerThickness, markerHeight, gridWorldDepth + 0.4),
+        position: [center + tileWidth / 2 + markerThickness / 2, -0.01 + tileHeight / 2 + markerHeight / 2, 0],
+        color: 0xffff00,
+    },
+];
+
+for (const markerDefinition of markerDefinitions) {
+    const markerMaterial = new THREE.MeshBasicMaterial({color: markerDefinition.color});
+    const marker = new THREE.Mesh(markerDefinition.geometry, markerMaterial);
+    marker.position.set(...markerDefinition.position);
+    scene.add(marker);
 }
 
 const characterHeight = 0.8;
