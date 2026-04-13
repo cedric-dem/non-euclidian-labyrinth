@@ -1,0 +1,8 @@
+smooth transitions turn
+smooth transition forward/back
+
+improve colors
+
+start of tree hierarchy is visible
+
+white border should extend on flat surface

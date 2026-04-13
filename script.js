@@ -8,11 +8,7 @@ import {
     tileHeight,
     markerHeight,
     markerThickness,
-    characterHeadRadius,
-    followCameraHeight,
-    followCameraDistance,
-    directionMarkerSize,
-    centerMarkerSize,
+    smallMarkerSize,
     colorSceneBackground,
     colorLightTile,
     colorDarkTile,
@@ -20,26 +16,24 @@ import {
     colorBottomMarker,
     colorLeftMarker,
     colorRightMarker,
-    colorCharacterBody,
-    colorCharacterHead,
-    characterHeight,
-    characterRadius,
     cameraHeight,
+    characterHeight,
     colorTileInPath,
     colorDirectionMarker,
     colorPreviousMarker,
     colorCenterMarker,
     colorWall,
     wallCubeSize,
-    wallHeight
+    wallHeight,
+    colorWallBorder
 } from './config.js';
 
 // ---- define const --------------------------------------------------------
 
 const center = (gridSize - 1) / 2;
 
-const directionMarkerOffsetX = tileWidth / 2 - directionMarkerSize / 2 - 0.03;
-const directionMarkerOffsetZ = tileDepth / 2 - directionMarkerSize / 2 - 0.03;
+const directionMarkerOffsetX = tileWidth / 2 - smallMarkerSize / 2 - 0.0001;
+const directionMarkerOffsetZ = tileDepth / 2 - smallMarkerSize / 2 - 0.0001;
 const directionMarkerY = tileHeight / 2;
 
 const centerMarkerY = tileHeight / 2;
@@ -48,6 +42,7 @@ const minGridIndex = 0;
 const maxGridIndex = gridSize - 1;
 const gridWorldWidth = gridSize * tileWidth;
 const gridWorldDepth = gridSize * tileDepth;
+const followCameraLookAheadDistance = 1;
 
 // ---- App bootstrap --------------------------------------------------------
 const app = document.getElementById('app');
@@ -59,12 +54,12 @@ renderer.setPixelRatio(window.devicePixelRatio);
 app.appendChild(renderer.domElement);
 
 const topCamera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
-const followCamera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+const povCamera = new THREE.PerspectiveCamera(110, window.innerWidth / window.innerHeight, 0.1, 100);
 topCamera.position.set(0, cameraHeight, 0);
 topCamera.lookAt(0, 0, 0);
 
 // ---- Shared state ---------------------------------------------------------
-let isFollowCameraActive = false;
+let isFollowCameraActive = true;
 let currentTile = null;
 let lastMovementDirection = {x: 0, z: -1};
 
@@ -77,6 +72,8 @@ const characterGridPosition = {x: center, z: gridSize - 1};
 const wallCubeY = tileHeight / 2 + wallHeight / 2;
 const wallCubeGeometry = new THREE.BoxGeometry(wallCubeSize, wallHeight, wallCubeSize);
 const wallCubeMaterial = new THREE.MeshBasicMaterial({color: colorWall});
+const wallCubeEdgesGeometry = new THREE.EdgesGeometry(wallCubeGeometry);
+const wallCubeEdgesMaterial = new THREE.LineBasicMaterial({color: colorWallBorder});
 const wallPositionOffset = (tileWidth - wallCubeSize) / 2;
 const wallOffsets = [-wallPositionOffset, 0, wallPositionOffset];
 
@@ -84,11 +81,9 @@ const tileGeometry = new THREE.BoxGeometry(tileWidth, tileHeight, tileDepth);
 const tileLabyrinthPartMaterial = new THREE.MeshBasicMaterial({color: colorTileInPath});
 
 
-const directionMarkerGeometry = new THREE.BoxGeometry(directionMarkerSize, tileHeight, directionMarkerSize);
+const sharedMarkerGeometry = new THREE.BoxGeometry(smallMarkerSize, tileHeight, smallMarkerSize);
 const directionMarkerMaterial = new THREE.MeshBasicMaterial({color: colorDirectionMarker});
 const previousMarkerMaterial = new THREE.MeshBasicMaterial({color: colorPreviousMarker});
-
-const centerMarkerGeometry = new THREE.BoxGeometry(centerMarkerSize, tileHeight, centerMarkerSize);
 const centerMarkerMaterial = new THREE.MeshBasicMaterial({color: colorCenterMarker});
 
 const positionOffsets = [
@@ -147,25 +142,19 @@ function createBoundaryMarkers() {
 
 // ---- Character setup ------------------------------------------------------
 
-const characterGeometry = new THREE.CylinderGeometry(characterRadius, characterRadius, characterHeight, 24);
-const characterMaterial = new THREE.MeshBasicMaterial({color: colorCharacterBody});
 const character = new THREE.Group();
-const characterBody = new THREE.Mesh(characterGeometry, characterMaterial);
-characterBody.position.y = 0;
-character.add(characterBody);
-
-const characterHeadGeometry = new THREE.SphereGeometry(characterHeadRadius, 20, 20);
-const characterHeadMaterial = new THREE.MeshBasicMaterial({color: colorCharacterHead});
-const characterHead = new THREE.Mesh(characterHeadGeometry, characterHeadMaterial);
-characterHead.position.set(0, characterHeight / 2 - characterHeadRadius * 0.1, characterRadius + characterHeadRadius * 0.9);
-character.add(characterHead);
+const topViewPlayerMarker = new THREE.Mesh(
+    new THREE.SphereGeometry(0.2, 16, 16),
+    new THREE.MeshBasicMaterial({color: 0x000000})
+);
+topViewPlayerMarker.visible = false;
+scene.add(topViewPlayerMarker);
 
 function updateCharacterWorldPosition() {
-    character.position.set(
-        characterGridPosition.x - center,
-        tileHeight / 2 + characterHeight / 2,
-        characterGridPosition.z - center
-    );
+    const worldX = characterGridPosition.x - center;
+    const worldZ = characterGridPosition.z - center;
+    character.position.set(worldX, tileHeight / 2 + characterHeight / 2, worldZ);
+    topViewPlayerMarker.position.set(worldX, tileHeight / 2 + 0.2, worldZ);
 }
 
 function updateCharacterFacingDirection() {
@@ -177,19 +166,22 @@ function updateCharacterFacingDirection() {
 }
 
 function updateFollowCamera() {
-    const followOffset = new THREE.Vector3(0, followCameraHeight, followCameraDistance);
+    const movementDirection = new THREE.Vector3(
+        lastMovementDirection.x,
+        0,
+        lastMovementDirection.z
+    ).normalize();
+    const eyeOffset = new THREE.Vector3(0, characterHeight, 0);
+    const lookAheadOffset = movementDirection.multiplyScalar(followCameraLookAheadDistance);
+    const lookTarget = new THREE.Vector3()
+        .copy(character.position)
+        .add(eyeOffset)
+        .add(lookAheadOffset);
 
-    if (lastMovementDirection !== null) {
-        followOffset.set(
-            -lastMovementDirection.x * followCameraDistance,
-            followCameraHeight,
-            -lastMovementDirection.z * followCameraDistance
-        );
-    }
-
-    followCamera.position.copy(character.position).add(followOffset);
-    followCamera.lookAt(character.position);
+    povCamera.position.copy(character.position).add(eyeOffset);
+    povCamera.lookAt(lookTarget);
 }
+
 
 function handleKeyDown(event) {
     const key = event.key.toLowerCase();
@@ -201,21 +193,69 @@ function handleKeyDown(event) {
         isFollowCameraActive = !isFollowCameraActive;
         return;
     }
+    const keyToRelativeDirection = {
+        z: 'forward',
+        s: 'backward',
+        q: 'left',
+        d: 'right',
+    };
+    const relativeDirection = keyToRelativeDirection[key] ?? null;
+    if (relativeDirection === null) {
+        return;
+    }
+    const getDirectionIndexFromVector = (x, z) => {
+        if (x === 0 && z === -1) {
+            return 0; // up
+        }
+        if (x === 1 && z === 0) {
+            return 1; // right
+        }
+        if (x === 0 && z === 1) {
+            return 2; // down
+        }
+        return 3; // left
+    };
 
-    if (key === 'z') {
+    if (isFollowCameraActive) {
+        const forwardX = lastMovementDirection.x;
+        const forwardZ = lastMovementDirection.z;
+
+        if (relativeDirection === 'left' || relativeDirection === 'right') {
+            if (relativeDirection === 'left') {
+                lastMovementDirection = {
+                    x: forwardZ,
+                    z: -forwardX,
+                };
+            } else {
+                lastMovementDirection = {
+                    x: -forwardZ,
+                    z: forwardX,
+                };
+            }
+            updateCharacterFacingDirection();
+            return;
+        }
+
+        if (relativeDirection === 'forward') {
+            moveX = forwardX;
+            moveZ = forwardZ;
+        } else if (relativeDirection === 'backward') {
+            moveX = -forwardX;
+            moveZ = -forwardZ;
+        }
+        directionIndex = getDirectionIndexFromVector(moveX, moveZ);
+    } else if (relativeDirection === 'forward') {
         moveZ = -1;
         directionIndex = 0;
-    } else if (key === 's') {
-        moveZ = 1;
-        directionIndex = 2;
-    } else if (key === 'q') {
-        moveX = -1;
-        directionIndex = 3;
-    } else if (key === 'd') {
+    } else if (relativeDirection === 'right') {
         moveX = 1;
         directionIndex = 1;
-    } else {
-        return;
+    } else if (relativeDirection === 'backward') {
+        moveZ = 1;
+        directionIndex = 2;
+    } else if (relativeDirection === 'left') {
+        moveX = -1;
+        directionIndex = 3;
     }
 
     const historyEntry = tileHistory[tileHistory.length - 1] ?? null;
@@ -263,14 +303,15 @@ function handleResize() {
     const aspect = window.innerWidth / window.innerHeight;
     topCamera.aspect = aspect;
     topCamera.updateProjectionMatrix();
-    followCamera.aspect = aspect;
-    followCamera.updateProjectionMatrix();
+    povCamera.aspect = aspect;
+    povCamera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
 function animate() {
     updateFollowCamera();
-    const activeCamera = isFollowCameraActive ? followCamera : topCamera;
+    topViewPlayerMarker.visible = !isFollowCameraActive;
+    const activeCamera = isFollowCameraActive ? povCamera : topCamera;
     renderer.render(scene, activeCamera);
     requestAnimationFrame(animate);
 }
@@ -326,6 +367,8 @@ function setTilesWalls(currentTile) {
             }
 
             const wallCube = new THREE.Mesh(wallCubeGeometry, wallCubeMaterial);
+            const wallCubeEdges = new THREE.LineSegments(wallCubeEdgesGeometry, wallCubeEdgesMaterial);
+            wallCube.add(wallCubeEdges);
             wallCube.position.set(wallOffsets[col], wallCubeY, wallOffsets[row]);
             currentTile.representation.add(wallCube);
         }
@@ -335,13 +378,13 @@ function setTilesWalls(currentTile) {
 function setTilesMarkers(currentTile) {
 
     // Center marker for each labyrinth tile
-    const centerMarker = new THREE.Mesh(centerMarkerGeometry, centerMarkerMaterial);
+    const centerMarker = new THREE.Mesh(sharedMarkerGeometry, centerMarkerMaterial);
     centerMarker.position.set(0, centerMarkerY, 0);
     currentTile.representation.add(centerMarker);
 
     // Next-direction markers
     const addNextMarker = (xOffset, zOffset) => {
-        const marker = new THREE.Mesh(directionMarkerGeometry, directionMarkerMaterial);
+        const marker = new THREE.Mesh(sharedMarkerGeometry, directionMarkerMaterial);
         marker.position.set(xOffset, directionMarkerY, zOffset);
         currentTile.representation.add(marker);
     };
@@ -361,7 +404,7 @@ function setTilesMarkers(currentTile) {
 
     // Previous-direction markers
     const addPreviousMarker = (xOffset, zOffset) => {
-        const marker = new THREE.Mesh(directionMarkerGeometry, previousMarkerMaterial);
+        const marker = new THREE.Mesh(sharedMarkerGeometry, previousMarkerMaterial);
         marker.position.set(xOffset, directionMarkerY, zOffset);
         currentTile.representation.add(marker);
     };
