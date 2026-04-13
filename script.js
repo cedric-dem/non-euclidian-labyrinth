@@ -206,4 +206,281 @@ const animate = () => {
     requestAnimationFrame(animate);
 };
 
+const tileLabyrinthPartMaterial = new THREE.MeshBasicMaterial({color: 0x444444});
+
+const directionMarkerSize = 0.333;
+const directionMarkerOffsetX = tileWidth / 2 - directionMarkerSize / 2 - 0.03;
+const directionMarkerOffsetZ = tileDepth / 2 - directionMarkerSize / 2 - 0.03;
+const directionMarkerY = tileHeight / 2;
+const directionMarkerGeometry = new THREE.BoxGeometry(
+    directionMarkerSize,
+    tileHeight,
+    directionMarkerSize
+);
+const directionMarkerMaterial = new THREE.MeshBasicMaterial({color: 0x00ff00});
+const previousMarkerMaterial = new THREE.MeshBasicMaterial({color: 0xff0000});
+const centerMarkerSize = 0.33;
+const centerMarkerY = tileHeight / 2;
+const centerMarkerGeometry = new THREE.BoxGeometry(
+    centerMarkerSize,
+    tileHeight,
+    centerMarkerSize
+);
+const centerMarkerMaterial = new THREE.MeshBasicMaterial({color: 0x0000ff});
+
+function getRepresentation(nextTiles) {
+    const tileGroup = new THREE.Group();
+
+    // Tile itself
+    const tile = new THREE.Mesh(tileGeometry, tileLabyrinthPartMaterial);
+    tile.position.set(0, 0, 0);
+    tileGroup.add(tile);
+
+    // Center marker for each labyrinth tile
+    const centerMarker = new THREE.Mesh(centerMarkerGeometry, centerMarkerMaterial);
+    centerMarker.position.set(0, centerMarkerY, 0);
+    tileGroup.add(centerMarker);
+
+    // Direction markers (small green cubes that stay within tile bounds)
+
+    const addDirectionMarker = (xOffset, zOffset) => {
+        const marker = new THREE.Mesh(directionMarkerGeometry, directionMarkerMaterial);
+        marker.position.set(xOffset, directionMarkerY, zOffset);
+        tileGroup.add(marker);
+    };
+
+    //  walls
+    if (nextTiles[0]) { // path to top
+        addDirectionMarker(0, -directionMarkerOffsetZ);
+    }
+    if (nextTiles[1]) { // path to right
+        addDirectionMarker(directionMarkerOffsetX, 0);
+    }
+    if (nextTiles[2]) { // path to bottom
+        addDirectionMarker(0, directionMarkerOffsetZ);
+    }
+    if (nextTiles[3]) { // path to left
+        addDirectionMarker(-directionMarkerOffsetX, 0);
+    }
+
+    scene.add(tileGroup);
+    return tileGroup;
+}
+
+function setPreviousTiles(currentTile, visitedTiles = new Set()) {
+    if (visitedTiles.has(currentTile)) {
+        return;
+    }
+    visitedTiles.add(currentTile);
+
+    const addPreviousMarker = (xOffset, zOffset) => {
+        const marker = new THREE.Mesh(directionMarkerGeometry, previousMarkerMaterial);
+        marker.position.set(xOffset, directionMarkerY, zOffset);
+        currentTile.representation.add(marker);
+    };
+
+    if (currentTile.previousTile[0]) { // path to top
+        addPreviousMarker(0, -directionMarkerOffsetZ);
+    }
+    if (currentTile.previousTile[1]) { // path to right
+        addPreviousMarker(directionMarkerOffsetX, 0);
+    }
+    if (currentTile.previousTile[2]) { // path to bottom
+        addPreviousMarker(0, directionMarkerOffsetZ);
+    }
+    if (currentTile.previousTile[3]) { // path to left
+        addPreviousMarker(-directionMarkerOffsetX, 0);
+    }
+
+    currentTile.nextTiles.forEach((nextTile) => {
+        if (nextTile !== null) {
+            setPreviousTiles(nextTile, visitedTiles);
+        }
+    });
+}
+
+const positionOffsets = [
+    [0, -1], // up
+    [1, 0],  // right
+    [0, 1],  // down
+    [-1, 0], // left
+];
+
+function setTilesPositions(currentLocation, currentTile) {
+    //currentLocation : [x , z]
+    currentTile.representation.position.set(
+        currentLocation[0] - center,
+        0,
+        currentLocation[1] - center
+    );
+
+    currentTile.nextTiles.forEach((nextTile, directionIndex) => {
+        if (nextTile === null) {
+            return;
+        }
+
+        const offset = positionOffsets[directionIndex];
+        const nextLocation = [
+            currentLocation[0] + offset[0],
+            currentLocation[1] + offset[1],
+        ];
+        const previousDirectionIndex = (directionIndex + 2) % 4;
+        nextTile.previousTile[previousDirectionIndex] = true;
+        setTilesPositions(nextLocation, nextTile);
+    });
+}
+
+class labyrinthTile {
+    constructor(nextTiles) {
+        this.nextTiles = nextTiles;
+        this.representation = getRepresentation(nextTiles);
+        this.previousTile = [false, false, false, false];
+    }
+}
+
+// convention : [up, right, down, left]
+
+const entryPoint = new labyrinthTile([
+    new labyrinthTile([
+        new labyrinthTile([
+            null,
+            new labyrinthTile([
+                null,
+                new labyrinthTile([
+                    new labyrinthTile([
+                        new labyrinthTile([
+                            new labyrinthTile([
+                                new labyrinthTile([null, null, null, null]),
+                                null,
+                                null,
+                                null
+                            ]),
+                            null,
+                            null,
+                            null
+                        ]),
+                        null,
+                        null,
+                        null
+                    ]),
+                    null,
+                    null,
+                    null
+                ]),
+                null,
+                null
+            ]),
+            null,
+            new labyrinthTile([
+                null,
+                null,
+                null,
+                new labyrinthTile([
+                    new labyrinthTile([
+                        new labyrinthTile([
+                            null,
+                            new labyrinthTile([
+                                null,
+                                new labyrinthTile([
+                                    null,
+                                    new labyrinthTile([
+                                        null,
+                                        new labyrinthTile([
+                                            null,
+                                            new labyrinthTile([
+                                                null,
+                                                new labyrinthTile([null, null, null, null]),
+                                                null,
+                                                null
+                                            ]),
+                                            null,
+                                            null
+                                        ]),
+                                        null,
+                                        null
+                                    ]),
+                                    null,
+                                    null
+                                ]),
+                                null,
+                                null
+                            ]),
+                            null,
+                            null
+                        ]),
+                        null,
+                        null,
+                        null
+                    ]),
+                    null,
+                    null,
+                    null
+                ])
+            ])
+        ]),
+        null,
+        null,
+        null
+    ]),
+    null,
+    null,
+    null
+])
+
+/*
+const entryPoint = new labyrinthTile([
+    new labyrinthTile([
+        null,
+        new labyrinthTile([
+            new labyrinthTile([
+                null,
+                null,
+                null,
+                new labyrinthTile([
+                    null,
+                    null,
+                    new labyrinthTile([null, null, null, null]),
+                    null
+                ])
+            ]),
+            null,
+            null,
+            null
+        ]),
+        null,
+        new labyrinthTile([
+            new labyrinthTile([
+                null,
+                new labyrinthTile([
+                    new labyrinthTile([
+                        new labyrinthTile([
+                            null,
+                            new labyrinthTile([null, null, null, null]),
+                            null,
+                            null
+                        ]),
+                        null,
+                        null,
+                        null
+                    ]),
+                    null,
+                    null,
+                    null]),
+                null,
+                null
+            ]),
+            null,
+            null,
+            null
+    ]),
+    ]),
+        null,
+            null,
+            null
+    ]);
+*/
+
+setTilesPositions([center, gridSize - 1], entryPoint);
+setPreviousTiles(entryPoint);
+
 animate();
