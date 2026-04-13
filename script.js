@@ -104,8 +104,21 @@ const updateCharacterWorldPosition = () => {
     );
 };
 
+const followCameraHeight = 2.8;
+const followCameraDistance = 3.2;
+let lastMovementDirection = null;
+
 const updateFollowCamera = () => {
-    const followOffset = new THREE.Vector3(0, 2.8, 3.2);
+    const followOffset = new THREE.Vector3(0, followCameraHeight, followCameraDistance);
+
+    if (lastMovementDirection !== null) {
+        followOffset.set(
+            -lastMovementDirection.x * followCameraDistance,
+            followCameraHeight,
+            -lastMovementDirection.z * followCameraDistance
+        );
+    }
+
     followCamera.position.copy(character.position).add(followOffset);
     followCamera.lookAt(character.position);
 };
@@ -137,6 +150,15 @@ window.addEventListener('keydown', (event) => {
 
     const nextX = THREE.MathUtils.clamp(characterGridPosition.x + moveX, minGridIndex, maxGridIndex);
     const nextZ = THREE.MathUtils.clamp(characterGridPosition.z + moveZ, minGridIndex, maxGridIndex);
+
+    if (nextX === characterGridPosition.x && nextZ === characterGridPosition.z) {
+        return;
+    }
+
+    lastMovementDirection = {
+        x: nextX - characterGridPosition.x,
+        z: nextZ - characterGridPosition.z,
+    };
 
     characterGridPosition.x = nextX;
     characterGridPosition.z = nextZ;
