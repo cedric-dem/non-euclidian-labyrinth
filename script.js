@@ -10,12 +10,21 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
 app.appendChild(renderer.domElement);
 
-const camera = new THREE.PerspectiveCamera(
+const topCamera = new THREE.PerspectiveCamera(
     50,
     window.innerWidth / window.innerHeight,
     0.1,
     100
 );
+
+const followCamera = new THREE.PerspectiveCamera(
+    50,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    100
+);
+
+let isFollowCameraActive = false;
 
 const gridSize = 9;
 const tileWidth = 1;
@@ -61,6 +70,12 @@ const updateCharacterWorldPosition = () => {
     );
 };
 
+const updateFollowCamera = () => {
+    const followOffset = new THREE.Vector3(0, 2.8, 3.2);
+    followCamera.position.copy(character.position).add(followOffset);
+    followCamera.lookAt(character.position);
+};
+
 updateCharacterWorldPosition();
 scene.add(character);
 
@@ -68,6 +83,11 @@ window.addEventListener('keydown', (event) => {
     const key = event.key.toLowerCase();
     let moveX = 0;
     let moveZ = 0;
+
+    if (key === 'a' && !event.repeat) {
+        isFollowCameraActive = !isFollowCameraActive;
+        return;
+    }
 
     if (key === 'z') {
         moveZ = -1;
@@ -89,17 +109,22 @@ window.addEventListener('keydown', (event) => {
     updateCharacterWorldPosition();
 });
 
-camera.position.set(0, 13, 0);
-camera.lookAt(0, 0, 0);
+topCamera.position.set(0, 13, 0);
+topCamera.lookAt(0, 0, 0);
 
 window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
+    const aspect = window.innerWidth / window.innerHeight;
+    topCamera.aspect = aspect;
+    topCamera.updateProjectionMatrix();
+    followCamera.aspect = aspect;
+    followCamera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
 const animate = () => {
-    renderer.render(scene, camera);
+    updateFollowCamera();
+    const activeCamera = isFollowCameraActive ? followCamera : topCamera;
+    renderer.render(scene, activeCamera);
     requestAnimationFrame(animate);
 };
 
