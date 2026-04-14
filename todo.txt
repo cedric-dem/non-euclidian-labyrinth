@@ -12,3 +12,14 @@ white border should extend on flat surface
 
 the "s" keypress should also allow to go back when the movement leads to another "branch" of the labyrinth hierarchy
 
+android app
+
+level creator
+level difficulty estimate (dumb algorithm finds solution = easy level. *have to do some "counter intuitive" things = hard level)
+
+end handling
+end detection
+end indication (big flag or compass ?)
+end after long lane so no interference with other path
+
+player can add "not here" marker 
