@@ -2,20 +2,13 @@ import * as THREE from 'https://unpkg.com/three@0.164.1/build/three.module.js';
 import {entryPoint} from './labyrinth.js';
 import {labyrinthTiles} from './labyrinthTile.js';
 import {
+    fovPovView,
     gridSize,
     tileWidth,
     tileDepth,
     tileHeight,
-    markerHeight,
-    markerThickness,
     smallMarkerSize,
     colorSceneBackground,
-    colorLightTile,
-    colorDarkTile,
-    colorTopMarker,
-    colorBottomMarker,
-    colorLeftMarker,
-    colorRightMarker,
     cameraHeight,
     characterHeight,
     colorTileInPath,
@@ -25,7 +18,9 @@ import {
     colorWall,
     wallCubeSize,
     wallHeight,
-    colorWallBorder
+    colorWallBorder,
+    movementDurationMs,
+    movementAnimationSteps
 } from './config.js';
 
 // ---- define const --------------------------------------------------------
@@ -40,11 +35,7 @@ const centerMarkerY = tileHeight / 2;
 
 const minGridIndex = 0;
 const maxGridIndex = gridSize - 1;
-const gridWorldWidth = gridSize * tileWidth;
-const gridWorldDepth = gridSize * tileDepth;
-const followCameraLookAheadDistance = 1;
-const movementDurationMs = 220;
-const movementAnimationSteps = 8;
+
 
 // ---- App bootstrap --------------------------------------------------------
 const app = document.getElementById('app');
@@ -56,7 +47,7 @@ renderer.setPixelRatio(window.devicePixelRatio);
 app.appendChild(renderer.domElement);
 
 const topCamera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
-const povCamera = new THREE.PerspectiveCamera(110, window.innerWidth / window.innerHeight, 0.1, 100);
+const povCamera = new THREE.PerspectiveCamera(fovPovView, window.innerWidth / window.innerHeight, 0.1, 100);
 topCamera.position.set(0, cameraHeight, 0);
 topCamera.lookAt(0, 0, 0);
 
@@ -144,45 +135,6 @@ function trySetVisibleTile(tile) {
     return true;
 }
 
-// ---- Scene setup ----------------------------------------------------------
-function createCheckerboardTiles() {
-    for (let x = 0; x < gridSize; x += 1) {
-        for (let z = 0; z < gridSize; z += 1) {
-            const color = (x + z) % 2 === 0 ? new THREE.Color(colorLightTile) : new THREE.Color(colorDarkTile);
-            const tileMaterial = new THREE.MeshBasicMaterial({color});
-            const tile = new THREE.Mesh(tileGeometry, tileMaterial);
-            tile.position.set(x - center, -0.01, z - center);
-            scene.add(tile);
-        }
-    }
-}
-
-function createBoundaryMarkers() {
-    const markerDefinitions = [{
-        geometry: new THREE.BoxGeometry(gridWorldWidth + 0.4, markerHeight, markerThickness),
-        position: [0, tileHeight / 2 + markerHeight / 2, -(center + tileDepth / 2 + markerThickness / 2)],
-        color: colorTopMarker,
-    }, {
-        geometry: new THREE.BoxGeometry(gridWorldWidth + 0.4, markerHeight, markerThickness),
-        position: [0, tileHeight / 2 + markerHeight / 2, center + tileDepth / 2 + markerThickness / 2],
-        color: colorBottomMarker,
-    }, {
-        geometry: new THREE.BoxGeometry(markerThickness, markerHeight, gridWorldDepth + 0.4),
-        position: [-(center + tileWidth / 2 + markerThickness / 2), -0.01 + tileHeight / 2 + markerHeight / 2, 0],
-        color: colorLeftMarker,
-    }, {
-        geometry: new THREE.BoxGeometry(markerThickness, markerHeight, gridWorldDepth + 0.4),
-        position: [center + tileWidth / 2 + markerThickness / 2, -0.01 + tileHeight / 2 + markerHeight / 2, 0],
-        color: colorRightMarker,
-    },];
-
-    for (const markerDefinition of markerDefinitions) {
-        const markerMaterial = new THREE.MeshBasicMaterial({color: markerDefinition.color});
-        const marker = new THREE.Mesh(markerDefinition.geometry, markerMaterial);
-        marker.position.set(...markerDefinition.position);
-        scene.add(marker);
-    }
-}
 
 // ---- Character setup ------------------------------------------------------
 
@@ -291,7 +243,7 @@ function updateCharacterMovementAnimation(nowMs) {
 function updateFollowCamera() {
     const facingDirection = new THREE.Vector3(Math.sin(character.rotation.y), 0, Math.cos(character.rotation.y)).normalize();
     const eyeOffset = new THREE.Vector3(0, characterHeight, 0);
-    const lookAheadOffset = facingDirection.multiplyScalar(followCameraLookAheadDistance);
+    const lookAheadOffset = facingDirection.multiplyScalar(1);
     const lookTarget = new THREE.Vector3()
         .copy(character.position)
         .add(eyeOffset)
@@ -530,7 +482,7 @@ function setTilesMarkers(currentTile) {
         addNextMarker(-directionMarkerOffsetX, 0);
     }
 
-// Previous-direction markers
+    // Previous-direction markers
     const addPreviousMarker = (xOffset, zOffset) => {
         const marker = new THREE.Mesh(sharedMarkerGeometry, previousMarkerMaterial);
         marker.position.set(xOffset, directionMarkerY, zOffset);
@@ -633,8 +585,6 @@ function initializeLabyrinthState() {
 }
 
 function initialize() {
-    createCheckerboardTiles();
-    createBoundaryMarkers();
 
     updateCharacterWorldPosition();
     updateCharacterFacingDirection();
