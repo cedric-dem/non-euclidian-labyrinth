@@ -71,6 +71,7 @@ const tileHistory = [];
 const tileByGridPosition = new Map();
 const tileGridKeyByTile = new Map();
 const characterGridPosition = {x: center, z: gridSize - 1};
+let occupationMatrix = [];
 
 // ---- Core geometries/materials -------------------------------------------
 
@@ -91,14 +92,57 @@ const directionMarkerMaterial = new THREE.MeshBasicMaterial({color: colorDirecti
 const previousMarkerMaterial = new THREE.MeshBasicMaterial({color: colorPreviousMarker});
 const centerMarkerMaterial = new THREE.MeshBasicMaterial({color: colorCenterMarker});
 
-const positionOffsets = [
-    [0, -1], // up
+const positionOffsets = [[0, -1], // up
     [1, 0], // right
     [0, 1], // down
     [-1, 0], // left
 ];
 
 const getTileMapKey = (x, z) => `${x},${z}`;
+
+function createEmptyOccupationMatrix() {
+    return Array.from({length: gridSize}, () => Array.from({length: gridSize}, () => null));
+}
+
+function setOccupationCell(matrix, gridX, gridZ, tile) {
+    if (gridX < minGridIndex || gridX > maxGridIndex || gridZ < minGridIndex || gridZ > maxGridIndex) {
+        return;
+    }
+    matrix[gridZ][gridX] = tile;
+}
+
+function getTileGridPosition(tile) {
+    const tileGridKey = tileGridKeyByTile.get(tile);
+    if (tileGridKey === undefined) {
+        return null;
+    }
+
+    const [tileXAsText, tileZAsText] = tileGridKey.split(',');
+    return {
+        gridX: Number(tileXAsText),
+        gridZ: Number(tileZAsText),
+    };
+}
+
+function trySetVisibleTile(tile) {
+    const tileGridPosition = getTileGridPosition(tile);
+    if (tileGridPosition === null) {
+        return false;
+    }
+
+    const {gridX, gridZ} = tileGridPosition;
+    if (gridX < minGridIndex || gridX > maxGridIndex || gridZ < minGridIndex || gridZ > maxGridIndex) {
+        return false;
+    }
+
+    if (occupationMatrix[gridZ][gridX] !== null) {
+        return false;
+    }
+
+    setOccupationCell(occupationMatrix, gridX, gridZ, tile);
+    tile.representation.visible = true;
+    return true;
+}
 
 // ---- Scene setup ----------------------------------------------------------
 function createCheckerboardTiles() {
@@ -114,28 +158,23 @@ function createCheckerboardTiles() {
 }
 
 function createBoundaryMarkers() {
-    const markerDefinitions = [
-        {
-            geometry: new THREE.BoxGeometry(gridWorldWidth + 0.4, markerHeight, markerThickness),
-            position: [0, tileHeight / 2 + markerHeight / 2, -(center + tileDepth / 2 + markerThickness / 2)],
-            color: colorTopMarker,
-        },
-        {
-            geometry: new THREE.BoxGeometry(gridWorldWidth + 0.4, markerHeight, markerThickness),
-            position: [0, tileHeight / 2 + markerHeight / 2, center + tileDepth / 2 + markerThickness / 2],
-            color: colorBottomMarker,
-        },
-        {
-            geometry: new THREE.BoxGeometry(markerThickness, markerHeight, gridWorldDepth + 0.4),
-            position: [-(center + tileWidth / 2 + markerThickness / 2), -0.01 + tileHeight / 2 + markerHeight / 2, 0],
-            color: colorLeftMarker,
-        },
-        {
-            geometry: new THREE.BoxGeometry(markerThickness, markerHeight, gridWorldDepth + 0.4),
-            position: [center + tileWidth / 2 + markerThickness / 2, -0.01 + tileHeight / 2 + markerHeight / 2, 0],
-            color: colorRightMarker,
-        },
-    ];
+    const markerDefinitions = [{
+        geometry: new THREE.BoxGeometry(gridWorldWidth + 0.4, markerHeight, markerThickness),
+        position: [0, tileHeight / 2 + markerHeight / 2, -(center + tileDepth / 2 + markerThickness / 2)],
+        color: colorTopMarker,
+    }, {
+        geometry: new THREE.BoxGeometry(gridWorldWidth + 0.4, markerHeight, markerThickness),
+        position: [0, tileHeight / 2 + markerHeight / 2, center + tileDepth / 2 + markerThickness / 2],
+        color: colorBottomMarker,
+    }, {
+        geometry: new THREE.BoxGeometry(markerThickness, markerHeight, gridWorldDepth + 0.4),
+        position: [-(center + tileWidth / 2 + markerThickness / 2), -0.01 + tileHeight / 2 + markerHeight / 2, 0],
+        color: colorLeftMarker,
+    }, {
+        geometry: new THREE.BoxGeometry(markerThickness, markerHeight, gridWorldDepth + 0.4),
+        position: [center + tileWidth / 2 + markerThickness / 2, -0.01 + tileHeight / 2 + markerHeight / 2, 0],
+        color: colorRightMarker,
+    },];
 
     for (const markerDefinition of markerDefinitions) {
         const markerMaterial = new THREE.MeshBasicMaterial({color: markerDefinition.color});
@@ -148,10 +187,7 @@ function createBoundaryMarkers() {
 // ---- Character setup ------------------------------------------------------
 
 const character = new THREE.Group();
-const topViewPlayerMarker = new THREE.Mesh(
-    new THREE.SphereGeometry(0.2, 16, 16),
-    new THREE.MeshBasicMaterial({color: 0x000000})
-);
+const topViewPlayerMarker = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), new THREE.MeshBasicMaterial({color: 0x000000}));
 topViewPlayerMarker.visible = false;
 scene.add(topViewPlayerMarker);
 
@@ -217,11 +253,7 @@ function updateCharacterTurnAnimation(nowMs) {
     const elapsedMs = nowMs - activeTurnAnimation.startTimeMs;
     const turnProgress = THREE.MathUtils.clamp(elapsedMs / activeTurnAnimation.durationMs, 0, 1);
 
-    character.rotation.y = THREE.MathUtils.lerp(
-        activeTurnAnimation.startAngle,
-        activeTurnAnimation.targetAngle,
-        turnProgress
-    );
+    character.rotation.y = THREE.MathUtils.lerp(activeTurnAnimation.startAngle, activeTurnAnimation.targetAngle, turnProgress);
 
     if (turnProgress >= 1) {
         character.rotation.y = normalizeAngle(activeTurnAnimation.targetAngle);
@@ -242,46 +274,22 @@ function updateCharacterMovementAnimation(nowMs) {
         activeMovementAnimation.currentStep = targetStep;
     }
 
-    const steppedProgress = THREE.MathUtils.clamp(
-        activeMovementAnimation.currentStep / activeMovementAnimation.totalSteps,
-        0,
-        1
-    );
-    const worldX = THREE.MathUtils.lerp(
-        activeMovementAnimation.startWorldX,
-        activeMovementAnimation.targetWorldX,
-        steppedProgress
-    );
-    const worldZ = THREE.MathUtils.lerp(
-        activeMovementAnimation.startWorldZ,
-        activeMovementAnimation.targetWorldZ,
-        steppedProgress
-    );
+    const steppedProgress = THREE.MathUtils.clamp(activeMovementAnimation.currentStep / activeMovementAnimation.totalSteps, 0, 1);
+    const worldX = THREE.MathUtils.lerp(activeMovementAnimation.startWorldX, activeMovementAnimation.targetWorldX, steppedProgress);
+    const worldZ = THREE.MathUtils.lerp(activeMovementAnimation.startWorldZ, activeMovementAnimation.targetWorldZ, steppedProgress);
 
     character.position.set(worldX, tileHeight / 2 + characterHeight / 2, worldZ);
     topViewPlayerMarker.position.set(worldX, tileHeight / 2 + 0.2, worldZ);
 
     if (movementProgress >= 1) {
-        character.position.set(
-            activeMovementAnimation.targetWorldX,
-            tileHeight / 2 + characterHeight / 2,
-            activeMovementAnimation.targetWorldZ
-        );
-        topViewPlayerMarker.position.set(
-            activeMovementAnimation.targetWorldX,
-            tileHeight / 2 + 0.2,
-            activeMovementAnimation.targetWorldZ
-        );
+        character.position.set(activeMovementAnimation.targetWorldX, tileHeight / 2 + characterHeight / 2, activeMovementAnimation.targetWorldZ);
+        topViewPlayerMarker.position.set(activeMovementAnimation.targetWorldX, tileHeight / 2 + 0.2, activeMovementAnimation.targetWorldZ);
         activeMovementAnimation = null;
     }
 }
 
 function updateFollowCamera() {
-    const facingDirection = new THREE.Vector3(
-        Math.sin(character.rotation.y),
-        0,
-        Math.cos(character.rotation.y)
-    ).normalize();
+    const facingDirection = new THREE.Vector3(Math.sin(character.rotation.y), 0, Math.cos(character.rotation.y)).normalize();
     const eyeOffset = new THREE.Vector3(0, characterHeight, 0);
     const lookAheadOffset = facingDirection.multiplyScalar(followCameraLookAheadDistance);
     const lookTarget = new THREE.Vector3()
@@ -310,10 +318,7 @@ function handleKeyDown(event) {
         return;
     }
     const keyToRelativeDirection = {
-        z: 'forward',
-        s: 'backward',
-        q: 'left',
-        d: 'right',
+        z: 'forward', s: 'backward', q: 'left', d: 'right',
     };
     const relativeDirection = keyToRelativeDirection[key] ?? null;
     if (relativeDirection === null) {
@@ -339,13 +344,11 @@ function handleKeyDown(event) {
         if (relativeDirection === 'left' || relativeDirection === 'right') {
             if (relativeDirection === 'left') {
                 lastMovementDirection = {
-                    x: forwardZ,
-                    z: -forwardX,
+                    x: forwardZ, z: -forwardX,
                 };
             } else {
                 lastMovementDirection = {
-                    x: -forwardZ,
-                    z: forwardX,
+                    x: -forwardZ, z: forwardX,
                 };
             }
             startTurnToDirection(lastMovementDirection);
@@ -377,11 +380,7 @@ function handleKeyDown(event) {
 
     const historyEntry = tileHistory[tileHistory.length - 1] ?? null;
     const forwardTile = currentTile?.nextTiles[directionIndex] ?? null;
-    const canMoveBackward = (
-        historyEntry !== null
-        && historyEntry.previousDirectionIndex === directionIndex
-        && tileHistory.length > 1
-    );
+    const canMoveBackward = (historyEntry !== null && historyEntry.previousDirectionIndex === directionIndex && tileHistory.length > 1);
 
     const shouldOnlyBacktrack = isFollowCameraActive && relativeDirection === 'backward';
 
@@ -393,8 +392,7 @@ function handleKeyDown(event) {
         currentTile = tileHistory[tileHistory.length - 1]?.tile ?? null;
     } else if (forwardTile !== null) {
         tileHistory.push({
-            tile: forwardTile,
-            previousDirectionIndex: (directionIndex + 2) % 4,
+            tile: forwardTile, previousDirectionIndex: (directionIndex + 2) % 4,
         });
         currentTile = forwardTile;
     } else if (canMoveBackward) {
@@ -413,8 +411,7 @@ function handleKeyDown(event) {
 
     if (shouldTurnCharacter) {
         lastMovementDirection = {
-            x: nextX - characterGridPosition.x,
-            z: nextZ - characterGridPosition.z,
+            x: nextX - characterGridPosition.x, z: nextZ - characterGridPosition.z,
         };
     }
 
@@ -478,16 +475,16 @@ function setTilesWalls(currentTile) {
     const openCells = new Set();
     openCells.add('1,1'); // center marker is always present
 
-    if (currentTile.nextTiles[0] || currentTile.previousTile[0]) {
+    if (currentTile.nextTiles[0] || currentTile.previousTiles[0]) {
         openCells.add('1,0');
     }
-    if (currentTile.nextTiles[1] || currentTile.previousTile[1]) {
+    if (currentTile.nextTiles[1] || currentTile.previousTiles[1]) {
         openCells.add('2,1');
     }
-    if (currentTile.nextTiles[2] || currentTile.previousTile[2]) {
+    if (currentTile.nextTiles[2] || currentTile.previousTiles[2]) {
         openCells.add('1,2');
     }
-    if (currentTile.nextTiles[3] || currentTile.previousTile[3]) {
+    if (currentTile.nextTiles[3] || currentTile.previousTiles[3]) {
         openCells.add('0,1');
     }
 
@@ -540,16 +537,16 @@ function setTilesMarkers(currentTile) {
         currentTile.representation.add(marker);
     };
 
-    if (currentTile.previousTile[0]) { // path to top
+    if (currentTile.previousTiles[0]) { // path to top
         addPreviousMarker(0, -directionMarkerOffsetZ);
     }
-    if (currentTile.previousTile[1]) { // path to right
+    if (currentTile.previousTiles[1]) { // path to right
         addPreviousMarker(directionMarkerOffsetX, 0);
     }
-    if (currentTile.previousTile[2]) { // path to bottom
+    if (currentTile.previousTiles[2]) { // path to bottom
         addPreviousMarker(0, directionMarkerOffsetZ);
     }
-    if (currentTile.previousTile[3]) { // path to left
+    if (currentTile.previousTiles[3]) { // path to left
         addPreviousMarker(-directionMarkerOffsetX, 0);
     }
 }
@@ -559,11 +556,7 @@ function setTilesPositions(currentLocation, currentTile) {
     const gridKey = getTileMapKey(currentLocation[0], currentLocation[1]);
     tileByGridPosition.set(gridKey, currentTile);
     tileGridKeyByTile.set(currentTile, gridKey);
-    currentTile.representation.position.set(
-        currentLocation[0] - center,
-        0,
-        currentLocation[1] - center
-    );
+    currentTile.representation.position.set(currentLocation[0] - center, 0, currentLocation[1] - center);
 
     currentTile.nextTiles.forEach((nextTile, directionIndex) => {
         if (nextTile === null) {
@@ -571,12 +564,9 @@ function setTilesPositions(currentLocation, currentTile) {
         }
 
         const offset = positionOffsets[directionIndex];
-        const nextLocation = [
-            currentLocation[0] + offset[0],
-            currentLocation[1] + offset[1],
-        ];
+        const nextLocation = [currentLocation[0] + offset[0], currentLocation[1] + offset[1],];
         const previousDirectionIndex = (directionIndex + 2) % 4;
-        nextTile.previousTile[previousDirectionIndex] = true;
+        nextTile.previousTiles[previousDirectionIndex] = currentTile;
         setTilesPositions(nextLocation, nextTile);
     });
 }
@@ -589,6 +579,8 @@ function setTilesRepresentation() {
 }
 
 function setSubtreeVisibility(rootTile) {
+    occupationMatrix = createEmptyOccupationMatrix();
+
     labyrinthTiles.forEach((tile) => {
         tile.representation.visible = false;
     });
@@ -597,57 +589,36 @@ function setSubtreeVisibility(rootTile) {
         return;
     }
 
-    const visibleTileByGridKey = new Map();
-    const registerVisibleTileCandidate = (tile, hierarchyDistance, sourcePriority) => {
-        const gridKey = tileGridKeyByTile.get(tile);
-        if (gridKey === undefined) {
-            return;
-        }
+    const visibleTiles = new Set();
+    const isRootVisible = trySetVisibleTile(rootTile);
+    if (!isRootVisible) {
+        return;
+    }
 
-        const previousCandidate = visibleTileByGridKey.get(gridKey);
-        if (previousCandidate === undefined) {
-            visibleTileByGridKey.set(gridKey, {tile, hierarchyDistance, sourcePriority});
-            return;
-        }
+    visibleTiles.add(rootTile);
+    let distanceLayerTiles = [rootTile];
 
-        const isCloserInHierarchy = hierarchyDistance < previousCandidate.hierarchyDistance;
-        const sameDistanceButHigherPriority = (
-            hierarchyDistance === previousCandidate.hierarchyDistance
-            && sourcePriority < previousCandidate.sourcePriority
-        );
+    while (distanceLayerTiles.length > 0) {
+        const nextDistanceLayerTiles = [];
 
-        if (isCloserInHierarchy || sameDistanceButHigherPriority) {
-            visibleTileByGridKey.set(gridKey, {tile, hierarchyDistance, sourcePriority});
-        }
-    };
+        distanceLayerTiles.forEach((tile) => {
+            const neighbors = [...tile.nextTiles, ...tile.previousTiles];
+            neighbors.forEach((neighborTile) => {
+                if (neighborTile === null || visibleTiles.has(neighborTile)) {
+                    return;
+                }
 
-    const visitedTiles = new Set();
-    const showTileAndChildren = (tile, hierarchyDepth = 0) => {
-        if (tile === null || visitedTiles.has(tile)) {
-            return;
-        }
+                if (!trySetVisibleTile(neighborTile)) {
+                    return;
+                }
 
-        visitedTiles.add(tile);
-        registerVisibleTileCandidate(tile, hierarchyDepth, 0);
-
-        tile.nextTiles.forEach((nextTile) => {
-            showTileAndChildren(nextTile, hierarchyDepth + 1);
+                visibleTiles.add(neighborTile);
+                nextDistanceLayerTiles.push(neighborTile);
+            });
         });
-    };
 
-    const historyUntilParent = tileHistory.slice(0, -1);
-    historyUntilParent.forEach((historyEntry, historyIndex) => {
-        if (historyEntry?.tile?.representation) {
-            const hierarchyDistance = tileHistory.length - historyIndex - 1;
-            registerVisibleTileCandidate(historyEntry.tile, hierarchyDistance, 1);
-        }
-    });
-
-    showTileAndChildren(rootTile);
-
-    visibleTileByGridKey.forEach((entry) => {
-        entry.tile.representation.visible = true;
-    });
+        distanceLayerTiles = nextDistanceLayerTiles;
+    }
 }
 
 function initializeLabyrinthState() {
@@ -655,8 +626,7 @@ function initializeLabyrinthState() {
     setTilesPositions([center, gridSize - 1], entryPoint);
     setTilesVisuals(entryPoint);
     tileHistory.push({
-        tile: entryPoint,
-        previousDirectionIndex: null,
+        tile: entryPoint, previousDirectionIndex: null,
     });
     currentTile = entryPoint;
     setSubtreeVisibility(currentTile);
