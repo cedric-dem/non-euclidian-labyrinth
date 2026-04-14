@@ -3,9 +3,12 @@ smooth transition forward/back
 
 improve colors
 
-start of tree hierarchy is visible
+add margin to not-in-branch hierarchy
+
+if next in hierarchy collides with itself, prioritize next
 
 white border should extend on flat surface
 
 
 the "s" keypress should also allow to go back when the movement leads to another "branch" of the labyrinth hierarchy
+

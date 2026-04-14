@@ -69,6 +69,7 @@ let activeMovementAnimation = null;
 
 const tileHistory = [];
 const tileByGridPosition = new Map();
+const tileGridKeyByTile = new Map();
 const characterGridPosition = {x: center, z: gridSize - 1};
 
 // ---- Core geometries/materials -------------------------------------------
@@ -532,7 +533,7 @@ function setTilesMarkers(currentTile) {
         addNextMarker(-directionMarkerOffsetX, 0);
     }
 
-    // Previous-direction markers
+// Previous-direction markers
     const addPreviousMarker = (xOffset, zOffset) => {
         const marker = new THREE.Mesh(sharedMarkerGeometry, previousMarkerMaterial);
         marker.position.set(xOffset, directionMarkerY, zOffset);
@@ -555,10 +556,9 @@ function setTilesMarkers(currentTile) {
 
 function setTilesPositions(currentLocation, currentTile) {
     //currentLocation : [x , z]
-    tileByGridPosition.set(
-        getTileMapKey(currentLocation[0], currentLocation[1]),
-        currentTile
-    );
+    const gridKey = getTileMapKey(currentLocation[0], currentLocation[1]);
+    tileByGridPosition.set(gridKey, currentTile);
+    tileGridKeyByTile.set(currentTile, gridKey);
     currentTile.representation.position.set(
         currentLocation[0] - center,
         0,
@@ -597,21 +597,57 @@ function setSubtreeVisibility(rootTile) {
         return;
     }
 
+    const visibleTileByGridKey = new Map();
+    const registerVisibleTileCandidate = (tile, hierarchyDistance, sourcePriority) => {
+        const gridKey = tileGridKeyByTile.get(tile);
+        if (gridKey === undefined) {
+            return;
+        }
+
+        const previousCandidate = visibleTileByGridKey.get(gridKey);
+        if (previousCandidate === undefined) {
+            visibleTileByGridKey.set(gridKey, {tile, hierarchyDistance, sourcePriority});
+            return;
+        }
+
+        const isCloserInHierarchy = hierarchyDistance < previousCandidate.hierarchyDistance;
+        const sameDistanceButHigherPriority = (
+            hierarchyDistance === previousCandidate.hierarchyDistance
+            && sourcePriority < previousCandidate.sourcePriority
+        );
+
+        if (isCloserInHierarchy || sameDistanceButHigherPriority) {
+            visibleTileByGridKey.set(gridKey, {tile, hierarchyDistance, sourcePriority});
+        }
+    };
+
     const visitedTiles = new Set();
-    const showTileAndChildren = (tile) => {
+    const showTileAndChildren = (tile, hierarchyDepth = 0) => {
         if (tile === null || visitedTiles.has(tile)) {
             return;
         }
 
         visitedTiles.add(tile);
-        tile.representation.visible = true;
+        registerVisibleTileCandidate(tile, hierarchyDepth, 0);
 
         tile.nextTiles.forEach((nextTile) => {
-            showTileAndChildren(nextTile);
+            showTileAndChildren(nextTile, hierarchyDepth + 1);
         });
     };
 
+    const historyUntilParent = tileHistory.slice(0, -1);
+    historyUntilParent.forEach((historyEntry, historyIndex) => {
+        if (historyEntry?.tile?.representation) {
+            const hierarchyDistance = tileHistory.length - historyIndex - 1;
+            registerVisibleTileCandidate(historyEntry.tile, hierarchyDistance, 1);
+        }
+    });
+
     showTileAndChildren(rootTile);
+
+    visibleTileByGridKey.forEach((entry) => {
+        entry.tile.representation.visible = true;
+    });
 }
 
 function initializeLabyrinthState() {
