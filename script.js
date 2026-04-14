@@ -43,6 +43,8 @@ const maxGridIndex = gridSize - 1;
 const gridWorldWidth = gridSize * tileWidth;
 const gridWorldDepth = gridSize * tileDepth;
 const followCameraLookAheadDistance = 1;
+const movementDurationMs = 220;
+const movementAnimationSteps = 8;
 
 // ---- App bootstrap --------------------------------------------------------
 const app = document.getElementById('app');
@@ -62,6 +64,8 @@ topCamera.lookAt(0, 0, 0);
 let isFollowCameraActive = true;
 let currentTile = null;
 let lastMovementDirection = {x: 0, z: -1};
+let activeTurnAnimation = null;
+let activeMovementAnimation = null;
 
 const tileHistory = [];
 const tileByGridPosition = new Map();
@@ -165,14 +169,120 @@ function updateCharacterFacingDirection() {
     character.rotation.y = Math.atan2(lastMovementDirection.x, lastMovementDirection.z);
 }
 
-function updateFollowCamera() {
-    const movementDirection = new THREE.Vector3(
-        lastMovementDirection.x,
+function normalizeAngle(angle) {
+    let normalizedAngle = angle;
+
+    while (normalizedAngle <= -Math.PI) {
+        normalizedAngle += Math.PI * 2;
+    }
+    while (normalizedAngle > Math.PI) {
+        normalizedAngle -= Math.PI * 2;
+    }
+
+    return normalizedAngle;
+}
+
+function startTurnToDirection(nextDirection) {
+    const targetAngle = Math.atan2(nextDirection.x, nextDirection.z);
+    const startAngle = normalizeAngle(character.rotation.y);
+    const shortestDelta = normalizeAngle(targetAngle - startAngle);
+
+    activeTurnAnimation = {
+        startAngle,
+        targetAngle: startAngle + shortestDelta,
+        startTimeMs: performance.now(),
+        durationMs: movementDurationMs,
+    };
+}
+
+function startMovementAnimation(nextGridX, nextGridZ) {
+    activeMovementAnimation = {
+        startWorldX: character.position.x,
+        startWorldZ: character.position.z,
+        targetWorldX: nextGridX - center,
+        targetWorldZ: nextGridZ - center,
+        startTimeMs: performance.now(),
+        durationMs: movementDurationMs,
+        totalSteps: movementAnimationSteps,
+        currentStep: 0,
+    };
+}
+
+function updateCharacterTurnAnimation(nowMs) {
+    if (activeTurnAnimation === null) {
+        return;
+    }
+
+    const elapsedMs = nowMs - activeTurnAnimation.startTimeMs;
+    const turnProgress = THREE.MathUtils.clamp(elapsedMs / activeTurnAnimation.durationMs, 0, 1);
+
+    character.rotation.y = THREE.MathUtils.lerp(
+        activeTurnAnimation.startAngle,
+        activeTurnAnimation.targetAngle,
+        turnProgress
+    );
+
+    if (turnProgress >= 1) {
+        character.rotation.y = normalizeAngle(activeTurnAnimation.targetAngle);
+        activeTurnAnimation = null;
+    }
+}
+
+function updateCharacterMovementAnimation(nowMs) {
+    if (activeMovementAnimation === null) {
+        return;
+    }
+
+    const elapsedMs = nowMs - activeMovementAnimation.startTimeMs;
+    const movementProgress = THREE.MathUtils.clamp(elapsedMs / activeMovementAnimation.durationMs, 0, 1);
+    const targetStep = Math.floor(movementProgress * activeMovementAnimation.totalSteps);
+
+    if (targetStep > activeMovementAnimation.currentStep) {
+        activeMovementAnimation.currentStep = targetStep;
+    }
+
+    const steppedProgress = THREE.MathUtils.clamp(
+        activeMovementAnimation.currentStep / activeMovementAnimation.totalSteps,
         0,
-        lastMovementDirection.z
+        1
+    );
+    const worldX = THREE.MathUtils.lerp(
+        activeMovementAnimation.startWorldX,
+        activeMovementAnimation.targetWorldX,
+        steppedProgress
+    );
+    const worldZ = THREE.MathUtils.lerp(
+        activeMovementAnimation.startWorldZ,
+        activeMovementAnimation.targetWorldZ,
+        steppedProgress
+    );
+
+    character.position.set(worldX, tileHeight / 2 + characterHeight / 2, worldZ);
+    topViewPlayerMarker.position.set(worldX, tileHeight / 2 + 0.2, worldZ);
+
+    if (movementProgress >= 1) {
+        character.position.set(
+            activeMovementAnimation.targetWorldX,
+            tileHeight / 2 + characterHeight / 2,
+            activeMovementAnimation.targetWorldZ
+        );
+        topViewPlayerMarker.position.set(
+            activeMovementAnimation.targetWorldX,
+            tileHeight / 2 + 0.2,
+            activeMovementAnimation.targetWorldZ
+        );
+        activeMovementAnimation = null;
+    }
+}
+
+function updateFollowCamera() {
+    const facingDirection = new THREE.Vector3(
+        Math.sin(character.rotation.y),
+        0,
+        Math.cos(character.rotation.y)
     ).normalize();
     const eyeOffset = new THREE.Vector3(0, characterHeight, 0);
-    const lookAheadOffset = movementDirection.multiplyScalar(followCameraLookAheadDistance);
+    const lookAheadOffset = facingDirection.multiplyScalar(followCameraLookAheadDistance);
     const lookTarget = new THREE.Vector3()
         .copy(character.position)
         .add(eyeOffset)
@@ -184,10 +294,15 @@ function updateFollowCamera() {
 
 
 function handleKeyDown(event) {
+    if (activeMovementAnimation !== null) {
+        return;
+    }
+
     const key = event.key.toLowerCase();
     let moveX = 0;
     let moveZ = 0;
     let directionIndex = -1;
+    let shouldTurnCharacter = true;
 
     if (key === 'a' && !event.repeat) {
         isFollowCameraActive = !isFollowCameraActive;
@@ -232,7 +347,7 @@ function handleKeyDown(event) {
                     z: forwardX,
                 };
             }
-            updateCharacterFacingDirection();
+            startTurnToDirection(lastMovementDirection);
             return;
         }
 
@@ -242,6 +357,7 @@ function handleKeyDown(event) {
         } else if (relativeDirection === 'backward') {
             moveX = -forwardX;
             moveZ = -forwardZ;
+            shouldTurnCharacter = false;
         }
         directionIndex = getDirectionIndexFromVector(moveX, moveZ);
     } else if (relativeDirection === 'forward') {
@@ -266,7 +382,15 @@ function handleKeyDown(event) {
         && tileHistory.length > 1
     );
 
-    if (forwardTile !== null) {
+    const shouldOnlyBacktrack = isFollowCameraActive && relativeDirection === 'backward';
+
+    if (shouldOnlyBacktrack) {
+        if (!canMoveBackward) {
+            return;
+        }
+        tileHistory.pop();
+        currentTile = tileHistory[tileHistory.length - 1]?.tile ?? null;
+    } else if (forwardTile !== null) {
         tileHistory.push({
             tile: forwardTile,
             previousDirectionIndex: (directionIndex + 2) % 4,
@@ -286,17 +410,21 @@ function handleKeyDown(event) {
         return;
     }
 
-    lastMovementDirection = {
-        x: nextX - characterGridPosition.x,
-        z: nextZ - characterGridPosition.z,
-    };
+    if (shouldTurnCharacter) {
+        lastMovementDirection = {
+            x: nextX - characterGridPosition.x,
+            z: nextZ - characterGridPosition.z,
+        };
+    }
 
     characterGridPosition.x = nextX;
     characterGridPosition.z = nextZ;
 
     setSubtreeVisibility(currentTile);
-    updateCharacterWorldPosition();
-    updateCharacterFacingDirection();
+    startMovementAnimation(nextX, nextZ);
+    if (shouldTurnCharacter) {
+        startTurnToDirection(lastMovementDirection);
+    }
 }
 
 function handleResize() {
@@ -308,7 +436,9 @@ function handleResize() {
     renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-function animate() {
+function animate(nowMs = performance.now()) {
+    updateCharacterMovementAnimation(nowMs);
+    updateCharacterTurnAnimation(nowMs);
     updateFollowCamera();
     topViewPlayerMarker.visible = !isFollowCameraActive;
     const activeCamera = isFollowCameraActive ? povCamera : topCamera;
