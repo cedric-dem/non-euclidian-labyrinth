@@ -1,6 +1,7 @@
 export const fovPovView = 80;
 
-export const gridSize = 9;
+export const gridSize = 9; // for occupation matrix
+
 export const tileWidth = 1;
 export const tileDepth = 1;
 export const tileHeight = 0.01;

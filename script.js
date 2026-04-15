@@ -2,8 +2,8 @@ import * as THREE from 'https://unpkg.com/three@0.164.1/build/three.module.js';
 import {entryPoint} from './labyrinth.js';
 import {labyrinthTiles} from './labyrinthTile.js';
 import {
-    fovPovView,
     gridSize,
+    fovPovView,
     tileWidth,
     tileDepth,
     tileHeight,
@@ -33,10 +33,6 @@ const directionMarkerY = tileHeight / 2;
 
 const centerMarkerY = tileHeight / 2;
 
-const minGridIndex = 0;
-const maxGridIndex = gridSize - 1;
-
-
 // ---- App bootstrap --------------------------------------------------------
 const app = document.getElementById('app');
 const scene = new THREE.Scene();
@@ -63,7 +59,6 @@ const tileByGridPosition = new Map();
 const tileGridKeyByTile = new Map();
 const characterGridPosition = {x: center, z: gridSize - 1};
 let occupationMatrix = [];
-
 // ---- Core geometries/materials -------------------------------------------
 
 const wallCubeY = tileHeight / 2 + wallHeight / 2;
@@ -96,9 +91,6 @@ function createEmptyOccupationMatrix() {
 }
 
 function setOccupationCell(matrix, gridX, gridZ, tile) {
-    if (gridX < minGridIndex || gridX > maxGridIndex || gridZ < minGridIndex || gridZ > maxGridIndex) {
-        return;
-    }
     matrix[gridZ][gridX] = tile;
 }
 
@@ -122,9 +114,6 @@ function trySetVisibleTile(tile) {
     }
 
     const {gridX, gridZ} = tileGridPosition;
-    if (gridX < minGridIndex || gridX > maxGridIndex || gridZ < minGridIndex || gridZ > maxGridIndex) {
-        return false;
-    }
 
     if (occupationMatrix[gridZ][gridX] !== null) {
         return false;
@@ -354,8 +343,8 @@ function handleKeyDown(event) {
         return;
     }
 
-    const nextX = THREE.MathUtils.clamp(characterGridPosition.x + moveX, minGridIndex, maxGridIndex);
-    const nextZ = THREE.MathUtils.clamp(characterGridPosition.z + moveZ, minGridIndex, maxGridIndex);
+    const nextX = characterGridPosition.x + moveX;
+    const nextZ = characterGridPosition.z + moveZ;
 
     if (nextX === characterGridPosition.x && nextZ === characterGridPosition.z) {
         return;
