@@ -13,3 +13,5 @@ end indication (big flag or compass ?)
 end after long lane so no interference with other path
 
 player can add "not here" marker 
+
+"s" keypress should allow to walk back in another branch

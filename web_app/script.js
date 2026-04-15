@@ -20,7 +20,8 @@ import {
     wallHeight,
     colorWallBorder,
     movementDurationMs,
-    movementAnimationSteps
+    movementAnimationSteps,
+    renderDistance
 } from './config.js';
 
 // ---- define const --------------------------------------------------------
@@ -58,7 +59,7 @@ const tileHistory = [];
 const tileByGridPosition = new Map();
 const tileGridKeyByTile = new Map();
 const characterGridPosition = {x: center, z: gridSize - 1};
-let occupationMatrix = [];
+let occupationMatrix = createEmptyOccupationMatrix();
 // ---- Core geometries/materials -------------------------------------------
 
 const wallCubeY = tileHeight / 2 + wallHeight / 2;
@@ -87,11 +88,15 @@ const positionOffsets = [[0, -1], // up
 const getTileMapKey = (x, z) => `${x},${z}`;
 
 function createEmptyOccupationMatrix() {
-    return Array.from({length: gridSize}, () => Array.from({length: gridSize}, () => null));
+    return new Set();
 }
 
-function setOccupationCell(matrix, gridX, gridZ, tile) {
-    matrix[gridZ][gridX] = tile;
+function setOccupationCell(matrix, gridX, gridZ) {
+    matrix.add(getTileMapKey(gridX, gridZ));
+}
+
+function hasOccupationCell(matrix, gridX, gridZ) {
+    return matrix.has(getTileMapKey(gridX, gridZ));
 }
 
 function getTileGridPosition(tile) {
@@ -115,11 +120,11 @@ function trySetVisibleTile(tile) {
 
     const {gridX, gridZ} = tileGridPosition;
 
-    if (occupationMatrix[gridZ][gridX] !== null) {
+    if (hasOccupationCell(occupationMatrix, gridX, gridZ)) {
         return false;
     }
 
-    setOccupationCell(occupationMatrix, gridX, gridZ, tile);
+    setOccupationCell(occupationMatrix, gridX, gridZ);
     tile.representation.visible = true;
     return true;
 }
@@ -240,6 +245,11 @@ function updateFollowCamera() {
 
     povCamera.position.copy(character.position).add(eyeOffset);
     povCamera.lookAt(lookTarget);
+}
+
+function updateTopCamera() {
+    topCamera.position.set(character.position.x, cameraHeight, character.position.z);
+    topCamera.lookAt(character.position.x, 0, character.position.z);
 }
 
 
@@ -379,6 +389,7 @@ function animate(nowMs = performance.now()) {
     updateCharacterMovementAnimation(nowMs);
     updateCharacterTurnAnimation(nowMs);
     updateFollowCamera();
+    updateTopCamera();
     topViewPlayerMarker.visible = !isFollowCameraActive;
     const activeCamera = isFollowCameraActive ? povCamera : topCamera;
     renderer.render(scene, activeCamera);
@@ -538,8 +549,13 @@ function setSubtreeVisibility(rootTile) {
 
     visibleTiles.add(rootTile);
     let distanceLayerTiles = [rootTile];
+    let currentDistance = 0;
 
     while (distanceLayerTiles.length > 0) {
+        if (Number.isInteger(renderDistance) && renderDistance >= 0 && currentDistance >= renderDistance) {
+            break;
+        }
+
         const nextDistanceLayerTiles = [];
 
         distanceLayerTiles.forEach((tile) => {
@@ -559,6 +575,7 @@ function setSubtreeVisibility(rootTile) {
         });
 
         distanceLayerTiles = nextDistanceLayerTiles;
+        currentDistance += 1;
     }
 }
 
