@@ -18,6 +18,9 @@ export const characterHeight = 0.3;
 export const movementDurationMs = 250;
 export const movementAnimationSteps = 10;
 
+export const objectivePoleHeight = 10;
+export const objectivePoleWidth = 0.2;
+
 // null => keep current behavior (render every reachable tile).
 // integer >= 0 => render tiles up to that labyrinth-tree distance from current tile.
 export const renderDistance = 5;
@@ -33,3 +36,6 @@ export const colorCenterMarker = 0x778991;
 
 export const colorWall = 0x202b2d;
 export const colorWallBorder = 0xb9dbe9;
+
+export const colorStartPole = 0xff8a3d;
+export const colorEndPole = 0x4dd2ff;

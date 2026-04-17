@@ -2,7 +2,7 @@ import random
 
 class LabyrinthTile:
 	def __init__(self, tileType, direction_to_parent = None):
-		self.tileTitle = tileType
+		self.tileType = tileType
 		self.nextTiles = [None, None, None, None]
 		self.direction_to_parent = direction_to_parent
 
@@ -39,7 +39,7 @@ def add_to_path_recursive(previous_move, current_labyrinth, left_size, tileType)
 	# Depth-first: keep extending one branch until the target size is reached.
 	# The path only grows on empty slots and avoids immediately going backwards.
 	if left_size <= 0:
-		return
+		return current_labyrinth
 
 	possible_directions = []
 	for direction in range(4):
@@ -49,18 +49,19 @@ def add_to_path_recursive(previous_move, current_labyrinth, left_size, tileType)
 			possible_directions.append(direction)
 
 	if len(possible_directions) == 0:
-		return
+		return current_labyrinth
 
 	new_direction = random.choice(possible_directions)
 	current_labyrinth.nextTiles[new_direction] = LabyrinthTile(tileType, (new_direction + 2) % 4)
-	add_to_path_recursive(new_direction, current_labyrinth.nextTiles[new_direction], left_size - 1, tileType)
+	return add_to_path_recursive(new_direction, current_labyrinth.nextTiles[new_direction], left_size - 1, tileType)
 
 def get_initial_labyrinth():
-	result = LabyrinthTile("first_tile")  # initial starts at top
+	result = LabyrinthTile("start")  # initial starts at top
 	initial_size_selected = random.randint(initial_size[0], initial_size[1])
 
 	result.nextTiles[0] = LabyrinthTile("winning_path", 2)
-	add_to_path_recursive(0, result.nextTiles[0], initial_size_selected, "winning_path")
+	last_winning_path_tile = add_to_path_recursive(0, result.nextTiles[0], initial_size_selected, "winning_path")
+	last_winning_path_tile.tileType = "end"
 
 	# return [[[[[], None, None, None], None, None, None], None, None, None], None, None, None]
 	return result
@@ -117,12 +118,18 @@ def get_formatted_recursive_labyrinth(current_indent, level_content):
 			get_formatted_recursive_labyrinth(child_indent, direction)
 		)
 
-	return current_indent + "new labyrinthTile([\n" + ",\n".join(formatted_directions) + "\n" + current_indent + "])"
+	tile_constructor = "labyrinthTile"
+	if level_content.tileType == "start":
+		tile_constructor = "startLabyrinthTile"
+	elif level_content.tileType == "end":
+		tile_constructor = "endLabyrinthTile"
+
+	return current_indent + "new " + tile_constructor + "([\n" + ",\n".join(formatted_directions) + "\n" + current_indent + "])"
 
 def save_level(level_content, level_name):
 	# todo : save like a pickle object or something
 	# temp way of saving the result
-	initial_str = "import {labyrinthTile} from './labyrinthTile.js'; \n\nexport const entryPoint = "
+	initial_str = "import {endLabyrinthTile, labyrinthTile, startLabyrinthTile} from './labyrinthTile.js'; \n\nexport const entryPoint = "
 
 	result_str = (initial_str + get_formatted_recursive_labyrinth("", level_content) + "\n")
 

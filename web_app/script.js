@@ -21,7 +21,11 @@ import {
     colorWallBorder,
     movementDurationMs,
     movementAnimationSteps,
-    renderDistance
+    renderDistance,
+    objectivePoleHeight,
+    objectivePoleWidth,
+    colorStartPole,
+    colorEndPole
 } from './config.js';
 
 // ---- define const --------------------------------------------------------
@@ -78,6 +82,12 @@ const sharedMarkerGeometry = new THREE.BoxGeometry(smallMarkerSize, tileHeight, 
 const directionMarkerMaterial = new THREE.MeshBasicMaterial({color: colorDirectionMarker});
 const previousMarkerMaterial = new THREE.MeshBasicMaterial({color: colorPreviousMarker});
 const centerMarkerMaterial = new THREE.MeshBasicMaterial({color: colorCenterMarker});
+const objectivePoleGeometry = new THREE.CylinderGeometry(
+    objectivePoleWidth / 2,
+    objectivePoleWidth / 2,
+    objectivePoleHeight,
+    20
+);
 
 const positionOffsets = [[0, -1], // up
     [1, 0], // right
@@ -110,6 +120,43 @@ function getTileGridPosition(tile) {
         gridX: Number(tileXAsText),
         gridZ: Number(tileZAsText),
     };
+}
+
+function getTileByType(tileType) {
+    return labyrinthTiles.find((tile) => tile.tileType === tileType) ?? null;
+}
+
+function addPersistentObjectivePole(tileType, color) {
+    const objectiveTile = getTileByType(tileType);
+    if (objectiveTile === null) {
+        return;
+    }
+
+    const tileGridPosition = getTileGridPosition(objectiveTile);
+    if (tileGridPosition === null) {
+        return;
+    }
+
+    const objectivePole = new THREE.Mesh(objectivePoleGeometry, new THREE.MeshBasicMaterial({color}));
+    const poleBottomY = -tileHeight / 2;
+    objectivePole.position.set(
+        tileGridPosition.gridX - center,
+        poleBottomY + objectivePoleHeight / 2,
+        tileGridPosition.gridZ - center
+    );
+    scene.add(objectivePole);
+}
+
+function logIfStartTile(tile) {
+    if (tile?.tileType === 'start') {
+        console.log('Player reached the start tile.');
+    }
+}
+
+function logIfEndTile(tile) {
+    if (tile?.tileType === 'end') {
+        console.log('Player reached the end tile.');
+    }
 }
 
 function trySetVisibleTile(tile) {
@@ -370,6 +417,8 @@ function handleKeyDown(event) {
     characterGridPosition.z = nextZ;
 
     setSubtreeVisibility(currentTile);
+    logIfStartTile(currentTile);
+    logIfEndTile(currentTile);
     startMovementAnimation(nextX, nextZ);
     if (shouldTurnCharacter) {
         startTurnToDirection(lastMovementDirection);
@@ -571,8 +620,10 @@ function setSubtreeVisibility(rootTile) {
 
                 visibleTiles.add(neighborTile);
                 nextDistanceLayerTiles.push(neighborTile);
-            });
-        });
+            })
+            ;
+        })
+        ;
 
         distanceLayerTiles = nextDistanceLayerTiles;
         currentDistance += 1;
@@ -583,11 +634,15 @@ function initializeLabyrinthState() {
     setTilesRepresentation();
     setTilesPositions([center, gridSize - 1], entryPoint);
     setTilesVisuals(entryPoint);
+    addPersistentObjectivePole('start', colorStartPole);
+    addPersistentObjectivePole('end', colorEndPole);
     tileHistory.push({
         tile: entryPoint, previousDirectionIndex: null,
     });
     currentTile = entryPoint;
     setSubtreeVisibility(currentTile);
+    logIfStartTile(currentTile);
+    logIfEndTile(currentTile);
 }
 
 function initialize() {
