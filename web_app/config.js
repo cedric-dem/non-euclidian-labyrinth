@@ -26,17 +26,17 @@ export const objectivePoleWidth = 0.2;
 export const renderDistance = 5;
 
 //////////////// Light
-export const sunHeight = 22;
-export const sunOffsetX = -8;
-export const sunOffsetZ = -10;
-export const sunLightIntensity = 8.1;
+export const sunHeight = 26;
+export const sunOffsetX = -11;
+export const sunOffsetZ = -14;
+export const sunLightIntensity = 4.2;
 export const sunLightDecay = 0;
 
 export const torchLightColor = 0xfff0c2;
-export const torchLightIntensity = 4.5;
-export const torchLightDistance = 8;
-export const torchLightAngle = Math.PI / 7;
-export const torchLightPenumbra = 0.45;
+export const torchLightIntensity = 5.2;
+export const torchLightDistance = 9;
+export const torchLightAngle = Math.PI / 8.5;
+export const torchLightPenumbra = 0.35;
 export const torchLightDecay = 1.2;
 export const torchOffsetX = 0.17;
 export const torchOffsetYFactor = 0.74;
@@ -46,18 +46,18 @@ export const torchTargetOffsetYFactor = 0.58;
 export const torchTargetOffsetZ = 3.1;
 
 //////////////// Colors
-export const colorTileInPath = 0x000000;
+export const colorTileInPath = 0x5d6470;
 
-export const colorSceneBackground = 0x87CEEB;
+export const colorSceneBackground = 0xbfe0ff;
 
-export const colorDirectionMarker = 0x939bb4;
-export const colorPreviousMarker = 0x65676b;
-export const colorCenterMarker = 0x778991;
+export const colorDirectionMarker = 0x8f9aff;
+export const colorPreviousMarker = 0xb2bcc9;
+export const colorCenterMarker = 0x6b7fe6;
 
-export const colorWall = 0x202b2d;
-export const colorWallBorder = 0xb9dbe9;
+export const colorWall = 0x4a5568;
+export const colorWallBorder = 0xc9d2de;
 
 export const colorStartPole = 0xff8a3d;
-export const colorEndPole = 0x4dd2ff;
+export const colorEndPole = 0x00b8ff;
 
 export const colorSunLight = 0xfff0c4;

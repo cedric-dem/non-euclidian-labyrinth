@@ -12,8 +12,6 @@ no other than end tile on the location of the end, same for start
 detect distance between start and end, should be in a given interval otherwise reject level and start again
 
 add cel shading ? 
-add sun ? 
-add torch ?
 
 add compass ?
 end after long lane so no interference with other path ?

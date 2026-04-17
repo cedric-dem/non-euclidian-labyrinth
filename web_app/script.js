@@ -59,14 +59,20 @@ const centerMarkerY = tileHeight / 2;
 const app = document.getElementById('app');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(colorSceneBackground);
+scene.fog = new THREE.Fog(colorSceneBackground, 8, 22);
 const renderer = new THREE.WebGLRenderer({antialias: true});
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
 app.appendChild(renderer.domElement);
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.1);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
 scene.add(ambientLight);
+const skyLight = new THREE.HemisphereLight(0xddeeff, 0xaeb8cf, 0.52);
+scene.add(skyLight);
 
 const sunLight = new THREE.DirectionalLight(colorSunLight, sunLightIntensity);
 sunLight.position.set(sunOffsetX, sunHeight, sunOffsetZ);
@@ -210,51 +216,51 @@ function trySetVisibleTile(tile) {
         return false;
     }
 
-            const {gridX, gridZ} = tileGridPosition;
+    const {gridX, gridZ} = tileGridPosition;
 
-            if (hasOccupationCell(occupationMatrix, gridX, gridZ)) {
-                return false;
-            }
+    if (hasOccupationCell(occupationMatrix, gridX, gridZ)) {
+        return false;
+    }
 
-            setOccupationCell(occupationMatrix, gridX, gridZ);
-            tile.representation.visible = true;
-            return true;
-        }
+    setOccupationCell(occupationMatrix, gridX, gridZ);
+    tile.representation.visible = true;
+    return true;
+}
 
 
 // ---- Character setup ------------------------------------------------------
 
-        const character = new THREE.Group();
-        const characterTorch = new THREE.SpotLight(
-            torchLightColor,
-            torchLightIntensity,
-            torchLightDistance,
-            torchLightAngle,
-            torchLightPenumbra,
-            torchLightDecay
-        );
-        characterTorch.position.set(torchOffsetX, characterHeight * torchOffsetYFactor, torchOffsetZ);
-        characterTorch.castShadow = true;
-        const characterTorchTarget = new THREE.Object3D();
-        characterTorchTarget.position.set(
-            torchTargetOffsetX,
-            characterHeight * torchTargetOffsetYFactor,
-            torchTargetOffsetZ
-        );
-        character.add(characterTorch);
-        character.add(characterTorchTarget);
-        characterTorch.target = characterTorchTarget;
+const character = new THREE.Group();
+const characterTorch = new THREE.SpotLight(
+    torchLightColor,
+    torchLightIntensity,
+    torchLightDistance,
+    torchLightAngle,
+    torchLightPenumbra,
+    torchLightDecay
+);
+characterTorch.position.set(torchOffsetX, characterHeight * torchOffsetYFactor, torchOffsetZ);
+characterTorch.castShadow = true;
+const characterTorchTarget = new THREE.Object3D();
+characterTorchTarget.position.set(
+    torchTargetOffsetX,
+    characterHeight * torchTargetOffsetYFactor,
+    torchTargetOffsetZ
+);
+character.add(characterTorch);
+character.add(characterTorchTarget);
+characterTorch.target = characterTorchTarget;
 
-        const topViewPlayerMarker = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), new THREE.MeshBasicMaterial({color: 0x000000}));
-        topViewPlayerMarker.visible = false;
-        scene.add(topViewPlayerMarker);
+const topViewPlayerMarker = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), new THREE.MeshBasicMaterial({color: 0x000000}));
+topViewPlayerMarker.visible = false;
+scene.add(topViewPlayerMarker);
 
-        function updateCharacterWorldPosition() {
-            const worldX = characterGridPosition.x - center;
-            const worldZ = characterGridPosition.z - center;
-            character.position.set(worldX, tileHeight / 2 + characterHeight / 2, worldZ);
-            topViewPlayerMarker.position.set(worldX, tileHeight / 2 + 0.2, worldZ);
-        }
+function updateCharacterWorldPosition() {
+    const worldX = characterGridPosition.x - center;
+    const worldZ = characterGridPosition.z - center;
+    character.position.set(worldX, tileHeight / 2 + characterHeight / 2, worldZ);
+    topViewPlayerMarker.position.set(worldX, tileHeight / 2 + 0.2, worldZ);
+}
 
 function updateCharacterFacingDirection() {
     if (lastMovementDirection === null) {
@@ -499,92 +505,92 @@ function handleResize() {
     renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-            function animate(nowMs = performance.now()) {
-                updateCharacterMovementAnimation(nowMs);
-                updateCharacterTurnAnimation(nowMs);
-                updateFollowCamera();
-                updateTopCamera();
-                topViewPlayerMarker.visible = !isFollowCameraActive;
-                const activeCamera = isFollowCameraActive ? povCamera : topCamera;
-                renderer.render(scene, activeCamera);
-                requestAnimationFrame(animate);
+function animate(nowMs = performance.now()) {
+    updateCharacterMovementAnimation(nowMs);
+    updateCharacterTurnAnimation(nowMs);
+    updateFollowCamera();
+    updateTopCamera();
+    topViewPlayerMarker.visible = !isFollowCameraActive;
+    const activeCamera = isFollowCameraActive ? povCamera : topCamera;
+    renderer.render(scene, activeCamera);
+    requestAnimationFrame(animate);
+}
+
+function getRepresentation() {
+    const tileGroup = new THREE.Group();
+
+    // Tile itself
+    const tile = new THREE.Mesh(tileGeometry, tileLabyrinthPartMaterial);
+    tile.position.set(0, 0, 0);
+    tile.receiveShadow = true;
+    tileGroup.add(tile);
+
+    scene.add(tileGroup);
+    return tileGroup;
+}
+
+function setTilesVisuals(currentTile, visitedTiles = new Set()) {
+    if (currentTile === null || visitedTiles.has(currentTile)) {
+        return;
+    }
+    visitedTiles.add(currentTile);
+
+    setTilesMarkers(currentTile)
+    setTilesWalls(currentTile)
+
+    currentTile.nextTiles.forEach((nextTile) => {
+        setTilesVisuals(nextTile, visitedTiles);
+    });
+}
+
+
+function setTilesWalls(currentTile) {
+    const openCells = new Set();
+    openCells.add('1,1'); // center marker is always present
+
+    if (currentTile.nextTiles[0] || currentTile.previousTiles[0]) {
+        openCells.add('1,0');
+    }
+    if (currentTile.nextTiles[1] || currentTile.previousTiles[1]) {
+        openCells.add('2,1');
+    }
+    if (currentTile.nextTiles[2] || currentTile.previousTiles[2]) {
+        openCells.add('1,2');
+    }
+    if (currentTile.nextTiles[3] || currentTile.previousTiles[3]) {
+        openCells.add('0,1');
+    }
+
+    for (let row = 0; row < wallOffsets.length; row += 1) {
+        for (let col = 0; col < wallOffsets.length; col += 1) {
+            if (openCells.has(`${col},${row}`)) {
+                continue;
             }
 
-            function getRepresentation() {
-                const tileGroup = new THREE.Group();
+            const wallCube = new THREE.Mesh(wallCubeGeometry, wallCubeMaterial);
+            wallCube.castShadow = true;
+            wallCube.receiveShadow = true;
+            const wallCubeEdges = new THREE.LineSegments(wallCubeEdgesGeometry, wallCubeEdgesMaterial);
+            wallCube.add(wallCubeEdges);
+            wallCube.position.set(wallOffsets[col], wallCubeY, wallOffsets[row]);
+            currentTile.representation.add(wallCube);
+        }
+    }
+}
 
-                // Tile itself
-                const tile = new THREE.Mesh(tileGeometry, tileLabyrinthPartMaterial);
-                tile.position.set(0, 0, 0);
-                tile.receiveShadow = true;
-                tileGroup.add(tile);
+function setTilesMarkers(currentTile) {
 
-                scene.add(tileGroup);
-                return tileGroup;
-            }
+    // Center marker for each labyrinth tile
+    const centerMarker = new THREE.Mesh(sharedMarkerGeometry, centerMarkerMaterial);
+    centerMarker.position.set(0, centerMarkerY, 0);
+    currentTile.representation.add(centerMarker);
 
-            function setTilesVisuals(currentTile, visitedTiles = new Set()) {
-                if (currentTile === null || visitedTiles.has(currentTile)) {
-                    return;
-                }
-                visitedTiles.add(currentTile);
-
-                setTilesMarkers(currentTile)
-                setTilesWalls(currentTile)
-
-                currentTile.nextTiles.forEach((nextTile) => {
-                    setTilesVisuals(nextTile, visitedTiles);
-                });
-            }
-
-
-            function setTilesWalls(currentTile) {
-                const openCells = new Set();
-                openCells.add('1,1'); // center marker is always present
-
-                if (currentTile.nextTiles[0] || currentTile.previousTiles[0]) {
-                    openCells.add('1,0');
-                }
-                if (currentTile.nextTiles[1] || currentTile.previousTiles[1]) {
-                    openCells.add('2,1');
-                }
-                if (currentTile.nextTiles[2] || currentTile.previousTiles[2]) {
-                    openCells.add('1,2');
-                }
-                if (currentTile.nextTiles[3] || currentTile.previousTiles[3]) {
-                    openCells.add('0,1');
-                }
-
-                for (let row = 0; row < wallOffsets.length; row += 1) {
-                    for (let col = 0; col < wallOffsets.length; col += 1) {
-                        if (openCells.has(`${col},${row}`)) {
-                            continue;
-                        }
-
-                        const wallCube = new THREE.Mesh(wallCubeGeometry, wallCubeMaterial);
-                        wallCube.castShadow = true;
-                        wallCube.receiveShadow = true;
-                        const wallCubeEdges = new THREE.LineSegments(wallCubeEdgesGeometry, wallCubeEdgesMaterial);
-                        wallCube.add(wallCubeEdges);
-                        wallCube.position.set(wallOffsets[col], wallCubeY, wallOffsets[row]);
-                        currentTile.representation.add(wallCube);
-                    }
-                }
-            }
-
-            function setTilesMarkers(currentTile) {
-
-                // Center marker for each labyrinth tile
-                const centerMarker = new THREE.Mesh(sharedMarkerGeometry, centerMarkerMaterial);
-                centerMarker.position.set(0, centerMarkerY, 0);
-                currentTile.representation.add(centerMarker);
-
-                // Next-direction markers
-                const addNextMarker = (xOffset, zOffset) => {
-                    const marker = new THREE.Mesh(sharedMarkerGeometry, directionMarkerMaterial);
-                    marker.position.set(xOffset, directionMarkerY, zOffset);
-                    currentTile.representation.add(marker);
-                };
+    // Next-direction markers
+    const addNextMarker = (xOffset, zOffset) => {
+        const marker = new THREE.Mesh(sharedMarkerGeometry, directionMarkerMaterial);
+        marker.position.set(xOffset, directionMarkerY, zOffset);
+        currentTile.representation.add(marker);
+    };
 
     if (currentTile.nextTiles[0]) { // path to top
         addNextMarker(0, -directionMarkerOffsetZ);
@@ -713,17 +719,17 @@ function initializeLabyrinthState() {
     logIfEndTile(currentTile);
 }
 
-                function initialize() {
+function initialize() {
 
-                    updateCharacterWorldPosition();
-                    updateCharacterFacingDirection();
-                    scene.add(character);
+    updateCharacterWorldPosition();
+    updateCharacterFacingDirection();
+    scene.add(character);
 
-                    initializeLabyrinthState();
+    initializeLabyrinthState();
 
-                    window.addEventListener('keydown', handleKeyDown);
-                    window.addEventListener('resize', handleResize);
-                    animate();
-                }
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('resize', handleResize);
+    animate();
+}
 
-                initialize();
+initialize();
