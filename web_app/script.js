@@ -25,7 +25,24 @@ import {
     objectivePoleHeight,
     objectivePoleWidth,
     colorStartPole,
-    colorEndPole
+    colorEndPole,
+    sunHeight,
+    sunOffsetX,
+    sunOffsetZ,
+    sunLightIntensity,
+    colorSunLight,
+    torchLightColor,
+    torchLightIntensity,
+    torchLightDistance,
+    torchLightAngle,
+    torchLightPenumbra,
+    torchLightDecay,
+    torchOffsetX,
+    torchOffsetYFactor,
+    torchOffsetZ,
+    torchTargetOffsetX,
+    torchTargetOffsetYFactor,
+    torchTargetOffsetZ
 } from './config.js';
 
 // ---- define const --------------------------------------------------------
@@ -45,7 +62,33 @@ scene.background = new THREE.Color(colorSceneBackground);
 const renderer = new THREE.WebGLRenderer({antialias: true});
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 app.appendChild(renderer.domElement);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.1);
+scene.add(ambientLight);
+
+const sunLight = new THREE.DirectionalLight(colorSunLight, sunLightIntensity);
+sunLight.position.set(sunOffsetX, sunHeight, sunOffsetZ);
+sunLight.target.position.set(0, 0, 0);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.width = 2048;
+sunLight.shadow.mapSize.height = 2048;
+sunLight.shadow.camera.near = 0.5;
+sunLight.shadow.camera.far = 80;
+sunLight.shadow.camera.left = -gridSize;
+sunLight.shadow.camera.right = gridSize;
+sunLight.shadow.camera.top = gridSize;
+sunLight.shadow.camera.bottom = -gridSize;
+scene.add(sunLight.target);
+scene.add(sunLight);
+
+const sunMarker = new THREE.Mesh(
+    new THREE.SphereGeometry(0.35, 16, 16),
+    new THREE.MeshBasicMaterial({color: colorSunLight})
+);
+sunMarker.position.copy(sunLight.position);
+scene.add(sunMarker);
 
 const topCamera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
 const povCamera = new THREE.PerspectiveCamera(fovPovView, window.innerWidth / window.innerHeight, 0.1, 100);
@@ -68,20 +111,20 @@ let occupationMatrix = createEmptyOccupationMatrix();
 
 const wallCubeY = tileHeight / 2 + wallHeight / 2;
 const wallCubeGeometry = new THREE.BoxGeometry(wallCubeSize, wallHeight, wallCubeSize);
-const wallCubeMaterial = new THREE.MeshBasicMaterial({color: colorWall});
+const wallCubeMaterial = new THREE.MeshLambertMaterial({color: colorWall});
 const wallCubeEdgesGeometry = new THREE.EdgesGeometry(wallCubeGeometry);
 const wallCubeEdgesMaterial = new THREE.LineBasicMaterial({color: colorWallBorder});
 const wallPositionOffset = (tileWidth - wallCubeSize) / 2;
 const wallOffsets = [-wallPositionOffset, 0, wallPositionOffset];
 
 const tileGeometry = new THREE.BoxGeometry(tileWidth, tileHeight, tileDepth);
-const tileLabyrinthPartMaterial = new THREE.MeshBasicMaterial({color: colorTileInPath});
+const tileLabyrinthPartMaterial = new THREE.MeshLambertMaterial({color: colorTileInPath});
 
 
 const sharedMarkerGeometry = new THREE.BoxGeometry(smallMarkerSize, tileHeight, smallMarkerSize);
-const directionMarkerMaterial = new THREE.MeshBasicMaterial({color: colorDirectionMarker});
-const previousMarkerMaterial = new THREE.MeshBasicMaterial({color: colorPreviousMarker});
-const centerMarkerMaterial = new THREE.MeshBasicMaterial({color: colorCenterMarker});
+const directionMarkerMaterial = new THREE.MeshLambertMaterial({color: colorDirectionMarker});
+const previousMarkerMaterial = new THREE.MeshLambertMaterial({color: colorPreviousMarker});
+const centerMarkerMaterial = new THREE.MeshLambertMaterial({color: colorCenterMarker});
 const objectivePoleGeometry = new THREE.CylinderGeometry(
     objectivePoleWidth / 2,
     objectivePoleWidth / 2,
@@ -137,7 +180,9 @@ function addPersistentObjectivePole(tileType, color) {
         return;
     }
 
-    const objectivePole = new THREE.Mesh(objectivePoleGeometry, new THREE.MeshBasicMaterial({color}));
+    const objectivePole = new THREE.Mesh(objectivePoleGeometry, new THREE.MeshLambertMaterial({color}));
+    objectivePole.castShadow = true;
+    objectivePole.receiveShadow = true;
     const poleBottomY = -tileHeight / 2;
     objectivePole.position.set(
         tileGridPosition.gridX - center,
@@ -165,31 +210,51 @@ function trySetVisibleTile(tile) {
         return false;
     }
 
-    const {gridX, gridZ} = tileGridPosition;
+            const {gridX, gridZ} = tileGridPosition;
 
-    if (hasOccupationCell(occupationMatrix, gridX, gridZ)) {
-        return false;
-    }
+            if (hasOccupationCell(occupationMatrix, gridX, gridZ)) {
+                return false;
+            }
 
-    setOccupationCell(occupationMatrix, gridX, gridZ);
-    tile.representation.visible = true;
-    return true;
-}
+            setOccupationCell(occupationMatrix, gridX, gridZ);
+            tile.representation.visible = true;
+            return true;
+        }
 
 
 // ---- Character setup ------------------------------------------------------
 
-const character = new THREE.Group();
-const topViewPlayerMarker = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), new THREE.MeshBasicMaterial({color: 0x000000}));
-topViewPlayerMarker.visible = false;
-scene.add(topViewPlayerMarker);
+        const character = new THREE.Group();
+        const characterTorch = new THREE.SpotLight(
+            torchLightColor,
+            torchLightIntensity,
+            torchLightDistance,
+            torchLightAngle,
+            torchLightPenumbra,
+            torchLightDecay
+        );
+        characterTorch.position.set(torchOffsetX, characterHeight * torchOffsetYFactor, torchOffsetZ);
+        characterTorch.castShadow = true;
+        const characterTorchTarget = new THREE.Object3D();
+        characterTorchTarget.position.set(
+            torchTargetOffsetX,
+            characterHeight * torchTargetOffsetYFactor,
+            torchTargetOffsetZ
+        );
+        character.add(characterTorch);
+        character.add(characterTorchTarget);
+        characterTorch.target = characterTorchTarget;
 
-function updateCharacterWorldPosition() {
-    const worldX = characterGridPosition.x - center;
-    const worldZ = characterGridPosition.z - center;
-    character.position.set(worldX, tileHeight / 2 + characterHeight / 2, worldZ);
-    topViewPlayerMarker.position.set(worldX, tileHeight / 2 + 0.2, worldZ);
-}
+        const topViewPlayerMarker = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), new THREE.MeshBasicMaterial({color: 0x000000}));
+        topViewPlayerMarker.visible = false;
+        scene.add(topViewPlayerMarker);
+
+        function updateCharacterWorldPosition() {
+            const worldX = characterGridPosition.x - center;
+            const worldZ = characterGridPosition.z - center;
+            character.position.set(worldX, tileHeight / 2 + characterHeight / 2, worldZ);
+            topViewPlayerMarker.position.set(worldX, tileHeight / 2 + 0.2, worldZ);
+        }
 
 function updateCharacterFacingDirection() {
     if (lastMovementDirection === null) {
@@ -434,89 +499,92 @@ function handleResize() {
     renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-function animate(nowMs = performance.now()) {
-    updateCharacterMovementAnimation(nowMs);
-    updateCharacterTurnAnimation(nowMs);
-    updateFollowCamera();
-    updateTopCamera();
-    topViewPlayerMarker.visible = !isFollowCameraActive;
-    const activeCamera = isFollowCameraActive ? povCamera : topCamera;
-    renderer.render(scene, activeCamera);
-    requestAnimationFrame(animate);
-}
-
-function getRepresentation() {
-    const tileGroup = new THREE.Group();
-
-    // Tile itself
-    const tile = new THREE.Mesh(tileGeometry, tileLabyrinthPartMaterial);
-    tile.position.set(0, 0, 0);
-    tileGroup.add(tile);
-
-    scene.add(tileGroup);
-    return tileGroup;
-}
-
-function setTilesVisuals(currentTile, visitedTiles = new Set()) {
-    if (currentTile === null || visitedTiles.has(currentTile)) {
-        return;
-    }
-    visitedTiles.add(currentTile);
-
-    setTilesMarkers(currentTile)
-    setTilesWalls(currentTile)
-
-    currentTile.nextTiles.forEach((nextTile) => {
-        setTilesVisuals(nextTile, visitedTiles);
-    });
-}
-
-
-function setTilesWalls(currentTile) {
-    const openCells = new Set();
-    openCells.add('1,1'); // center marker is always present
-
-    if (currentTile.nextTiles[0] || currentTile.previousTiles[0]) {
-        openCells.add('1,0');
-    }
-    if (currentTile.nextTiles[1] || currentTile.previousTiles[1]) {
-        openCells.add('2,1');
-    }
-    if (currentTile.nextTiles[2] || currentTile.previousTiles[2]) {
-        openCells.add('1,2');
-    }
-    if (currentTile.nextTiles[3] || currentTile.previousTiles[3]) {
-        openCells.add('0,1');
-    }
-
-    for (let row = 0; row < wallOffsets.length; row += 1) {
-        for (let col = 0; col < wallOffsets.length; col += 1) {
-            if (openCells.has(`${col},${row}`)) {
-                continue;
+            function animate(nowMs = performance.now()) {
+                updateCharacterMovementAnimation(nowMs);
+                updateCharacterTurnAnimation(nowMs);
+                updateFollowCamera();
+                updateTopCamera();
+                topViewPlayerMarker.visible = !isFollowCameraActive;
+                const activeCamera = isFollowCameraActive ? povCamera : topCamera;
+                renderer.render(scene, activeCamera);
+                requestAnimationFrame(animate);
             }
 
-            const wallCube = new THREE.Mesh(wallCubeGeometry, wallCubeMaterial);
-            const wallCubeEdges = new THREE.LineSegments(wallCubeEdgesGeometry, wallCubeEdgesMaterial);
-            wallCube.add(wallCubeEdges);
-            wallCube.position.set(wallOffsets[col], wallCubeY, wallOffsets[row]);
-            currentTile.representation.add(wallCube);
-        }
-    }
-}
+            function getRepresentation() {
+                const tileGroup = new THREE.Group();
 
-function setTilesMarkers(currentTile) {
+                // Tile itself
+                const tile = new THREE.Mesh(tileGeometry, tileLabyrinthPartMaterial);
+                tile.position.set(0, 0, 0);
+                tile.receiveShadow = true;
+                tileGroup.add(tile);
 
-    // Center marker for each labyrinth tile
-    const centerMarker = new THREE.Mesh(sharedMarkerGeometry, centerMarkerMaterial);
-    centerMarker.position.set(0, centerMarkerY, 0);
-    currentTile.representation.add(centerMarker);
+                scene.add(tileGroup);
+                return tileGroup;
+            }
 
-    // Next-direction markers
-    const addNextMarker = (xOffset, zOffset) => {
-        const marker = new THREE.Mesh(sharedMarkerGeometry, directionMarkerMaterial);
-        marker.position.set(xOffset, directionMarkerY, zOffset);
-        currentTile.representation.add(marker);
-    };
+            function setTilesVisuals(currentTile, visitedTiles = new Set()) {
+                if (currentTile === null || visitedTiles.has(currentTile)) {
+                    return;
+                }
+                visitedTiles.add(currentTile);
+
+                setTilesMarkers(currentTile)
+                setTilesWalls(currentTile)
+
+                currentTile.nextTiles.forEach((nextTile) => {
+                    setTilesVisuals(nextTile, visitedTiles);
+                });
+            }
+
+
+            function setTilesWalls(currentTile) {
+                const openCells = new Set();
+                openCells.add('1,1'); // center marker is always present
+
+                if (currentTile.nextTiles[0] || currentTile.previousTiles[0]) {
+                    openCells.add('1,0');
+                }
+                if (currentTile.nextTiles[1] || currentTile.previousTiles[1]) {
+                    openCells.add('2,1');
+                }
+                if (currentTile.nextTiles[2] || currentTile.previousTiles[2]) {
+                    openCells.add('1,2');
+                }
+                if (currentTile.nextTiles[3] || currentTile.previousTiles[3]) {
+                    openCells.add('0,1');
+                }
+
+                for (let row = 0; row < wallOffsets.length; row += 1) {
+                    for (let col = 0; col < wallOffsets.length; col += 1) {
+                        if (openCells.has(`${col},${row}`)) {
+                            continue;
+                        }
+
+                        const wallCube = new THREE.Mesh(wallCubeGeometry, wallCubeMaterial);
+                        wallCube.castShadow = true;
+                        wallCube.receiveShadow = true;
+                        const wallCubeEdges = new THREE.LineSegments(wallCubeEdgesGeometry, wallCubeEdgesMaterial);
+                        wallCube.add(wallCubeEdges);
+                        wallCube.position.set(wallOffsets[col], wallCubeY, wallOffsets[row]);
+                        currentTile.representation.add(wallCube);
+                    }
+                }
+            }
+
+            function setTilesMarkers(currentTile) {
+
+                // Center marker for each labyrinth tile
+                const centerMarker = new THREE.Mesh(sharedMarkerGeometry, centerMarkerMaterial);
+                centerMarker.position.set(0, centerMarkerY, 0);
+                currentTile.representation.add(centerMarker);
+
+                // Next-direction markers
+                const addNextMarker = (xOffset, zOffset) => {
+                    const marker = new THREE.Mesh(sharedMarkerGeometry, directionMarkerMaterial);
+                    marker.position.set(xOffset, directionMarkerY, zOffset);
+                    currentTile.representation.add(marker);
+                };
 
     if (currentTile.nextTiles[0]) { // path to top
         addNextMarker(0, -directionMarkerOffsetZ);
@@ -645,17 +713,17 @@ function initializeLabyrinthState() {
     logIfEndTile(currentTile);
 }
 
-function initialize() {
+                function initialize() {
 
-    updateCharacterWorldPosition();
-    updateCharacterFacingDirection();
-    scene.add(character);
+                    updateCharacterWorldPosition();
+                    updateCharacterFacingDirection();
+                    scene.add(character);
 
-    initializeLabyrinthState();
+                    initializeLabyrinthState();
 
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('resize', handleResize);
-    animate();
-}
+                    window.addEventListener('keydown', handleKeyDown);
+                    window.addEventListener('resize', handleResize);
+                    animate();
+                }
 
-initialize();
+                initialize();

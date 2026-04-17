@@ -22,3 +22,4 @@ player can add "not here" marker
 
 "s" keypress should allow to walk back in another branch
 
+resize cubes
